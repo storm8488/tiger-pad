@@ -43,6 +43,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -73,7 +74,9 @@ import com.damou.tigertouch.cloud.CloudLink
 import com.damou.tigertouch.drivers.Tr
 import com.damou.tigertouch.fleet.FleetFilter
 import com.damou.tigertouch.fleet.JobUi
+import com.damou.tigertouch.events.FleetEvent
 import com.damou.tigertouch.fleet.FleetPage
+import kotlinx.coroutines.flow.StateFlow
 import com.damou.tigertouch.fleet.PrinterUi
 import com.damou.tigertouch.fleet.TempUi
 import com.damou.tigertouch.fleet.UnitUi
@@ -129,6 +132,15 @@ fun DashboardScreen(
     onFilter: (FleetFilter) -> Unit,
     /** The printers shown and the summary, as [filter] makes them. */
     page: FleetPage,
+    /** Which printers blink: an event nobody acknowledged. */
+    alerts: AlertView,
+    /** Events not yet acknowledged, for the bell. */
+    unacked: Int,
+    /** The journal, read only while it is open. */
+    events: StateFlow<List<FleetEvent>>,
+    /** Someone touched this printer: its events are seen. */
+    onAck: (String) -> Unit,
+    onAckAll: () -> Unit,
     /** MJPEG stream URL by printer id, for the printers that have a camera. */
     cameras: Map<String, String> = emptyMap(),
     /** The tablet's battery beside the clock (Settings: off for a tablet that never leaves its charger). */
@@ -138,6 +150,7 @@ fun DashboardScreen(
 ) {
     var openId by remember { mutableStateOf<String?>(null) }
     var camId by remember { mutableStateOf<String?>(null) }
+    var journal by remember { mutableStateOf(false) }
     // The printers shown, in their order: this screen recomposes when that changes, not at every refresh.
     // Kept as the same instances while equal: the views below skip when they did not change.
     val ids = remember(page.ids) { page.ids }
@@ -147,7 +160,9 @@ fun DashboardScreen(
 
     // No background: the window's is Pal.bg (themes.xml).
     Column(Modifier.fillMaxSize()) {
-        Header(link, showBattery, demo, density, onDensity, onRefresh, onSettings, filter, brands, onFilter)
+        Header(link, showBattery, demo, density, onDensity, onRefresh, onSettings, filter, brands, onFilter) {
+            Bell(unacked) { journal = true }
+        }
         if (fleet.ids.isNotEmpty()) SummaryBar(summary, filter, onFilter)
         if (accountError.isNotEmpty()) {
             Text(accountError, color = Pal.muted, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp))
@@ -174,11 +189,12 @@ fun DashboardScreen(
                     val w = with(dens) { area.width.toDp().value.toInt() }
                     val h = with(dens) { area.height.toDp().value.toInt() }
                     val shown = if (density == Density.AUTO) autoDensity(ids.size, w, h) else density
-                    val onOpen: (String) -> Unit = { openId = it }
+                    // A touch on a printer that blinks acknowledges it; the next one opens it.
+                    val onOpen: (String) -> Unit = { id -> if (alerts.has(id)) onAck(id) else openId = id }
                     when (shown) {
-                        Density.WALL -> Wall(fleet, ids, w, h, onOpen)
-                        Density.LIST -> FleetList(fleet, ids, onOpen, onControl)
-                        else -> Cards(fleet, ids, onOpen, onControl, cameras) { camId = it }
+                        Density.WALL -> Wall(fleet, ids, w, h, alerts, onOpen)
+                        Density.LIST -> FleetList(fleet, ids, alerts, onOpen, onControl)
+                        else -> Cards(fleet, ids, alerts, onOpen, onControl, cameras) { camId = it }
                     }
                 }
             }
@@ -187,12 +203,18 @@ fun DashboardScreen(
 
     val open = openId?.let { fleet.printer(it) }
     if (open != null) {
-        Dialog(onDismissRequest = { openId = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Dialog(onDismissRequest = { openId = null }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+            ImmersiveDialog()
             PrinterFull(
                 open, demo, onClose = { openId = null }, onControl = { onControl(open.id, it) },
                 onCamera = cameras[open.id]?.let { { camId = open.id } },
             )
         }
+    }
+
+    if (journal) {
+        val list by events.collectAsState()
+        JournalDialog(list, demo, onAckAll, onAck) { journal = false }
     }
 
     val cam = camId?.let { id -> cameras[id]?.let { url -> id to url } }
@@ -213,6 +235,7 @@ private fun autoDensity(n: Int, w: Int, h: Int): Density {
 private fun Header(
     link: CloudLink, showBattery: Boolean, demo: Boolean, density: Density, onDensity: (Density) -> Unit,
     onRefresh: () -> Unit, onSettings: () -> Unit, filter: FleetFilter, brands: List<String>, onFilter: (FleetFilter) -> Unit,
+    bell: @Composable () -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth().height(64.dp).padding(start = 20.dp, end = 8.dp),
@@ -228,6 +251,8 @@ private fun Header(
             BrandMenu(brands, filter, onFilter)
         }
         Spacer(Modifier.weight(1f))
+        bell()
+        Spacer(Modifier.width(8.dp))
         Clock()
         if (showBattery) {
             Spacer(Modifier.width(16.dp))
@@ -288,7 +313,7 @@ fun DemoBadge(modifier: Modifier = Modifier) {
 
 @Composable
 private fun Cards(
-    fleet: FleetView, ids: List<String>, onOpen: (String) -> Unit, onControl: (String, PvControl) -> Unit,
+    fleet: FleetView, ids: List<String>, alerts: AlertView, onOpen: (String) -> Unit, onControl: (String, PvControl) -> Unit,
     cameras: Map<String, String>, onCamera: (String) -> Unit,
 ) {
     val d = LocalDensity.current
@@ -301,7 +326,7 @@ private fun Cards(
         modifier = Modifier.fillMaxSize(),
     ) {
         items(ids, key = { it }) { id ->
-            PrinterCard(fleet, id, pens, hasCamera = id in cameras, onOpen, onControl, onCamera)
+            PrinterCard(fleet, id, pens, alerts, hasCamera = id in cameras, onOpen, onControl, onCamera)
         }
     }
 }

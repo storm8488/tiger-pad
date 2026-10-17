@@ -44,7 +44,7 @@ private const val GAP = 10
  * percentage in very large type, the time left and the time it ends.
  */
 @Composable
-fun Wall(fleet: FleetView, ids: List<String>, width: Int, height: Int, onOpen: (String) -> Unit) {
+fun Wall(fleet: FleetView, ids: List<String>, width: Int, height: Int, alerts: AlertView, onOpen: (String) -> Unit) {
     val (cols, rows) = wallGrid(ids.size, width, height)
     val tileH = (height - 2 * PAD - (rows - 1) * GAP) / rows
     // At least 40 sp, as large as the tile allows.
@@ -59,7 +59,7 @@ fun Wall(fleet: FleetView, ids: List<String>, width: Int, height: Int, onOpen: (
                     val i = r * cols + c
                     if (i < ids.size) {
                         val id = ids[i]
-                        key(id) { WallTile(fleet, id, paints, onOpen, Modifier.weight(1f).fillMaxHeight()) }
+                        key(id) { WallTile(fleet, id, paints, alerts, onOpen, Modifier.weight(1f).fillMaxHeight()) }
                     } else {
                         Spacer(Modifier.weight(1f))
                     }
@@ -89,9 +89,10 @@ fun wallGrid(n: Int, w: Int, h: Int): Pair<Int, Int> {
  * each change. Here a change is one node and a few drawText calls.
  */
 @Composable
-private fun WallTile(fleet: FleetView, id: String, paints: WallPaints, onOpen: (String) -> Unit, modifier: Modifier) {
+private fun WallTile(fleet: FleetView, id: String, paints: WallPaints, alerts: AlertView, onOpen: (String) -> Unit, modifier: Modifier) {
     Spacer(
         modifier
+            .alertBorder(alerts, fleet, id, 16.dp)
             // A texture of its own: the GPU redraws the tile that changed and copies the others.
             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
             .clickable { onOpen(id) }

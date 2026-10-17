@@ -13,6 +13,7 @@ import com.damou.tigertouch.cloud.Presence
 import com.damou.tigertouch.demo.Demo
 import com.damou.tigertouch.demo.DemoConfig
 import com.damou.tigertouch.drivers.DriverEnv
+import com.damou.tigertouch.events.Events
 import com.damou.tigertouch.fleet.FleetFilter
 import com.damou.tigertouch.fleet.FleetMapper
 import com.damou.tigertouch.fleet.FleetPage
@@ -80,6 +81,10 @@ class TouchApp : Application() {
     lateinit var fleet: StateFlow<List<PrinterUi>>
         private set
 
+    /** What happened to the printers: the journal, the blinking tiles, the beep. */
+    lateinit var events: Events
+        private set
+
     /** Which printers the home page shows, in which order: set by the screen. */
     val filter = MutableStateFlow(FleetFilter())
 
@@ -127,6 +132,8 @@ class TouchApp : Application() {
             .stateIn(scope, SharingStarted.Eagerly, emptyList())
         page = combine(fleet, filter) { all, f -> page(all, f) }.flowOn(Dispatchers.Default)
             .stateIn(scope, SharingStarted.Eagerly, FleetPage())
+        events = Events(this, scope)
+        scope.launch(Dispatchers.Default) { fleet.collect { events.observe(it) } }
         scope.launch { start() }
     }
 
@@ -316,6 +323,7 @@ class TouchApp : Application() {
     }
 
     fun control(id: String, cmd: PvControl) {
+        if (cmd == PvControl.PAUSE) events.ownPause(id)
         scope.launch(Dispatchers.IO) {
             if (!links.control(id, cmd)) Log.i(TAG, "command not taken")
         }

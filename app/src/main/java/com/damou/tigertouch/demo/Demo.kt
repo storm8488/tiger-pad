@@ -74,6 +74,7 @@ object Demo {
         val printing = synchronized(live) { live.filter { it.isPrinting() } }
         if (printing.isEmpty()) return
         val err = printing.random()
+        android.util.Log.i("demo", "incident")
         err.fail()
         (printing - err).maxByOrNull { it.progressNow() }?.finishNow()
     }
@@ -108,6 +109,8 @@ internal enum class Mix {
     FLAKY,
     /** Its spool is nearly empty, and drops under 10 % while it prints. */
     LOW_SPOOL,
+    /** Prints, then stops in pause for a filament change after three minutes. */
+    PAUSE_LATER,
 }
 
 internal class DemoPrinter(
@@ -131,7 +134,7 @@ internal val TABLE = listOf(
     DemoPrinter("bambulab", "H2D", 2, U.AMS_HT, true, true, 60, "Tool holder", Mix.FAULT),
     DemoPrinter("bambulab", "A1 mini", 1, U.AMS, true, false, 100, "Keychain", Mix.DONE),
     DemoPrinter("klipper", "Trident", 1, U.NONE, true, true, 37, "Fan duct", Mix.FLAKY),
-    DemoPrinter("prusa", "MK4S", 1, U.NONE, false, false, 23, "Hinge", Mix.PRINT),
+    DemoPrinter("prusa", "MK4S", 1, U.NONE, false, false, 23, "Hinge", Mix.PAUSE_LATER),
     DemoPrinter("elegoo", "Centauri Carbon", 1, U.NONE, true, true, 49, "Desk organiser", Mix.PRINT),
     DemoPrinter("anycubic", "Kobra 3", 1, U.ACE, true, false, 12, "Headphone hook", Mix.PRINT),
     DemoPrinter("flashforge", "Adventurer 5M Pro", 1, U.NONE, true, true, 70, "Coaster", Mix.PRINT),
@@ -160,6 +163,7 @@ internal class DemoLink(private val k: Int, allPrinting: Boolean) : PrinterLink 
         const val MINUTES_PER_PCT = 2
         const val FAULT_AFTER_MS = 120_000L
         const val ERROR_FOR_MS = 300_000L
+        const val PAUSE_AFTER_MS = 180_000L
         const val FLAKY_UP_MS = 90_000L
         const val FLAKY_DOWN_MS = 240_000L
         /** The low spool loses one per cent every 30 s while printing. */
@@ -186,6 +190,7 @@ internal class DemoLink(private val k: Int, allPrinting: Boolean) : PrinterLink 
     private var light = d.light && rnd.nextBoolean()
     private var active = rnd.nextInt(4)
     private var faulted = false
+    private var pausedOnce = false
     private var notice = ""
     private val units = Array(4) { PvUnit() }
     private var errorMs = 0L
@@ -274,6 +279,11 @@ internal class DemoLink(private val k: Int, allPrinting: Boolean) : PrinterLink 
         }
         // Nobody can clear a fault from a demo: the printer is taken care of after a while.
         if (state == PvState.ERROR && now - errorMs > ERROR_FOR_MS) { state = PvState.IDLE; basePct = 0; notice = "" }
+        if (mix == Mix.PAUSE_LATER && !pausedOnce && state == PvState.PRINTING && now - t0 > PAUSE_AFTER_MS) {
+            pausedOnce = true
+            basePct = progress(now)
+            state = PvState.PAUSED
+        }
         if (mix == Mix.FAULT && !faulted && state == PvState.PRINTING && now - t0 > FAULT_AFTER_MS) fail()
         if (mix == Mix.LOW_SPOOL && state == PvState.PRINTING && d.unit != U.NONE) {
             val s = units[0].slot[active]

@@ -14,7 +14,7 @@ import com.damou.tigertouch.model.PvControl
 
 /** The list: one row per printer ([ListRow]), the firmware's list view. */
 @Composable
-fun FleetList(fleet: FleetView, ids: List<String>, onOpen: (String) -> Unit, onControl: (String, PvControl) -> Unit) {
+fun FleetList(fleet: FleetView, ids: List<String>, alerts: AlertView, onOpen: (String) -> Unit, onControl: (String, PvControl) -> Unit) {
     val d = LocalDensity.current
     val pens = remember(d) { Pens(d) }
     LazyColumn(
@@ -22,6 +22,6 @@ fun FleetList(fleet: FleetView, ids: List<String>, onOpen: (String) -> Unit, onC
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        items(ids, key = { it }) { id -> ListRow(fleet, id, pens, onOpen, onControl) }
+        items(ids, key = { it }) { id -> ListRow(fleet, id, pens, alerts, onOpen, onControl) }
     }
 }

@@ -237,7 +237,8 @@ data class Summary(
 )
 
 fun summarize(all: List<PrinterUi>): Summary {
-    val counts = StateFilter.entries.map { f -> f to all.count { f.matches(it) } }.filter { it.second > 0 }
+    // Idle printers ask nothing of anyone: not counted, the bar keeps its room for what does.
+    val counts = StateFilter.entries.filter { it != StateFilter.IDLE }.map { f -> f to all.count { f.matches(it) } }.filter { it.second > 0 }
     val next = all.filter { it.online && it.state == PvState.PRINTING && it.endMin > 0 }.minByOrNull { it.endMin }
     return Summary(counts, next?.name ?: "", next?.endMin ?: 0, all.map { it.brand }.distinct().sorted())
 }

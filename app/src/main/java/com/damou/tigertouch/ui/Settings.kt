@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.damou.tigertouch.BuildConfig
 import com.damou.tigertouch.demo.Demo
 import com.damou.tigertouch.demo.DemoConfig
+import com.damou.tigertouch.events.AlertPrefs
 import com.damou.tigertouch.drivers.Tr
 import com.damou.tigertouch.links.PrinterEntry
 import com.damou.tigertouch.model.Brands
@@ -68,6 +69,9 @@ fun SettingsScreen(
     demo: DemoConfig,
     onDemo: (DemoConfig) -> Unit,
     onIncident: () -> Unit,
+    alertPrefs: AlertPrefs,
+    onAlertPrefs: (AlertPrefs) -> Unit,
+    onTryBeep: (Int) -> Unit,
 ) {
     var askPinFor by remember { mutableStateOf<KioskAction?>(null) }
     var settingPin by remember { mutableStateOf(false) }
@@ -117,6 +121,9 @@ fun SettingsScreen(
                     Switch(checked = showBattery, onCheckedChange = onShowBattery)
                 }
             }
+
+            item { Section(Tr.t("Alerts", "Alertes")) }
+            item { AlertSettings(alertPrefs, onAlertPrefs, onTryBeep) }
 
             item { Section(Tr.t("Demo", "Démo")) }
             item { DemoCard(demo, onDemo, onIncident) }
@@ -259,8 +266,8 @@ private fun DemoCard(demo: DemoConfig, onDemo: (DemoConfig) -> Unit, onIncident:
                 Column(Modifier.weight(1f)) {
                     Text(Tr.t("Every printer prints", "Toutes en impression"), color = Pal.text, fontSize = 16.sp)
                     Text(
-                        Tr.t("Off: a mix of pauses, errors, finished plates, an offline printer and a spool running out.",
-                            "Désactivé : un mélange de pauses, d'erreurs, de plateaux terminés, d'une imprimante hors ligne et d'une bobine presque vide."),
+                        Tr.t("Off: a mix of pauses, errors, finished plates, an offline printer and a spool running out, some of them after a few minutes.",
+                            "Désactivé : un mélange de pauses, d'erreurs, de plateaux terminés, d'une imprimante hors ligne et d'une bobine presque vide, certains au bout de quelques minutes."),
                         color = Pal.muted, fontSize = 14.sp,
                     )
                 }

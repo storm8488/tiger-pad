@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -17,6 +18,8 @@ import com.damou.tigertouch.kiosk.Kiosk
 import com.damou.tigertouch.ui.DashboardScreen
 import com.damou.tigertouch.fleet.SortBy
 import com.damou.tigertouch.ui.Density
+import com.damou.tigertouch.ui.Screen
+import com.damou.tigertouch.ui.rememberAlertView
 import com.damou.tigertouch.ui.rememberFleetView
 import com.damou.tigertouch.ui.KioskAction
 import com.damou.tigertouch.ui.KioskInfo
@@ -59,6 +62,12 @@ class MainActivity : ComponentActivity() {
                 val fleet = rememberFleetView(app.fleet)
                 val filter by app.filter.collectAsStateWithLifecycle()
                 val page by app.page.collectAsStateWithLifecycle()
+                val alerts = rememberAlertView(app.events.alerting.collectAsStateWithLifecycle())
+                val events = app.events.events.collectAsStateWithLifecycle()
+                val unacked by remember { derivedStateOf { events.value.count { !it.acked } } }
+                val alertPrefs by app.events.alertPrefs.collectAsStateWithLifecycle()
+                // An event wakes the screen up.
+                LaunchedEffect(Unit) { app.events.wake.collect { Screen.wake(this@MainActivity) } }
                 var density by remember {
                     mutableStateOf(runCatching { Density.valueOf(uiPrefs.getString("density", "")!!) }.getOrDefault(Density.AUTO))
                 }
@@ -103,6 +112,9 @@ class MainActivity : ComponentActivity() {
                             demo = demo,
                             onDemo = app::setDemo,
                             onIncident = { com.damou.tigertouch.demo.Demo.incident() },
+                            alertPrefs = alertPrefs,
+                            onAlertPrefs = app.events::setPrefs,
+                            onTryBeep = { app.events.beep(it) },
                         )
                     } else {
                         DashboardScreen(
@@ -127,6 +139,11 @@ class MainActivity : ComponentActivity() {
                                 uiPrefs.edit().putString("sort", f.sort.name).apply()
                             },
                             page = page,
+                            alerts = alerts,
+                            unacked = unacked,
+                            events = app.events.events,
+                            onAck = app.events::ack,
+                            onAckAll = app.events::ackAll,
                         )
                     }
                 }

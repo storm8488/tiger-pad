@@ -63,7 +63,7 @@ private fun unitRows(p: PrinterUi?): Int {
 /** One printer: the firmware's card (ui/ui_cards.c), larger. */
 @Composable
 fun PrinterCard(
-    fleet: FleetView, id: String, pens: Pens, hasCamera: Boolean,
+    fleet: FleetView, id: String, pens: Pens, alerts: AlertView, hasCamera: Boolean,
     onOpen: (String) -> Unit, onControl: (String, PvControl) -> Unit, onCamera: (String) -> Unit,
 ) {
     // Only what changes the card's height or its buttons recomposes it.
@@ -72,6 +72,7 @@ fun PrinterCard(
     val infoH = TITLE_H + SPACE + JOB_H + SPACE + TEMPS_H + if (rows > 0) SPACE + rows * UNIT_ROW + (rows - 1) * 8 else 0
     Column(
         Modifier
+            .alertBorder(alerts, fleet, id, 18.dp)
             // A texture of its own: scrolling moves it, a change redraws it alone.
             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
             .background(Pal.card, RoundedCornerShape(18.dp))
@@ -197,12 +198,13 @@ private class CardInfo(private val p: PrinterUi, private val k: Pens, private va
  * the same reading as a card, with less drawn, and the pause, stop and light buttons.
  */
 @Composable
-fun ListRow(fleet: FleetView, id: String, pens: Pens, onOpen: (String) -> Unit, onControl: (String, PvControl) -> Unit) {
+fun ListRow(fleet: FleetView, id: String, pens: Pens, alerts: AlertView, onOpen: (String) -> Unit, onControl: (String, PvControl) -> Unit) {
     val job by remember(fleet, id) { derivedStateOf(structuralEqualityPolicy()) { fleet.get(id)?.job } }
     Row(
         Modifier
             .fillMaxWidth()
             .height(76.dp)
+            .alertBorder(alerts, fleet, id, 12.dp)
             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
             .background(Pal.card, RoundedCornerShape(12.dp))
             .clickable { onOpen(id) }

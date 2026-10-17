@@ -33,6 +33,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -95,27 +97,42 @@ fun SummaryBar(summary: Summary, filter: FleetFilter, onFilter: (FleetFilter) ->
                 Text(Tr.t("All", "Tout"), color = Pal.muted, fontSize = 16.sp)
             }
         }
-        Spacer(Modifier.weight(1f))
-        if (summary.nextEndMin > 0) NextEnd(summary.nextName, summary.nextEndMin)
+        if (summary.nextEndMin > 0) NextEnd(summary.nextName, summary.nextEndMin, Modifier.weight(1f))
     }
 }
 
-/** "Next end: K1 Max in 14 min (20:02)", counted down once a minute. */
+/**
+ * "Next end: K1 Max in 14 min (20:02)", counted down once a minute, at the
+ * right of the bar. When the counters leave too little room, "K1 Max · 14 min",
+ * and nothing when even that does not fit.
+ */
 @Composable
-private fun NextEnd(name: String, endMin: Long) {
+private fun NextEnd(name: String, endMin: Long, modifier: Modifier) {
     var nowMin by remember { mutableLongStateOf(System.currentTimeMillis() / 60_000) }
     LaunchedEffect(Unit) {
         while (true) { delay(15_000); nowMin = System.currentTimeMillis() / 60_000 }
     }
     val inMin = (endMin - nowMin).toInt().coerceAtLeast(0)
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(Tr.t("Next end: ", "Prochaine fin : "), color = Pal.muted, fontSize = 16.sp)
-        Text(name, color = Pal.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
-            overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(end = 6.dp))
-        Text(
-            (if (inMin < 1) Tr.t("now", "maintenant") else Tr.t("in ", "dans ") + fmtLeftMin(inMin)) + " (" + fmtClockMin(endMin) + ")",
-            color = Pal.text, fontSize = 16.sp, maxLines = 1,
-        )
+    val left = if (inMin < 1) Tr.t("now", "maintenant") else Tr.t("in ", "dans ") + fmtLeftMin(inMin)
+    Layout(
+        content = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(Tr.t("Next end: ", "Prochaine fin : "), color = Pal.muted, fontSize = 16.sp, maxLines = 1)
+                Text("$name ", color = Pal.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text("$left (${fmtClockMin(endMin)})", color = Pal.text, fontSize = 16.sp, maxLines = 1)
+            }
+            Text(
+                "$name · " + if (inMin < 1) Tr.t("now", "maintenant") else fmtLeftMin(inMin),
+                color = Pal.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+            )
+        },
+        modifier = modifier,
+    ) { children, c ->
+        val free = Constraints(maxHeight = c.maxHeight)
+        val pick = children.asSequence().map { it.measure(free) }.firstOrNull { it.width <= c.maxWidth }
+        layout(c.maxWidth, pick?.height ?: 0) {
+            pick?.place(c.maxWidth - pick.width, 0)
+        }
     }
 }
 
