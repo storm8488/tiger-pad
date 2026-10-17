@@ -178,7 +178,8 @@ internal class DemoLink(private val k: Int, allPrinting: Boolean) : PrinterLink 
         else -> PvState.PRINTING
     }
     private var basePct = if (allPrinting && d.progress == 0) 50 else if (mix == Mix.DONE) 100 else d.progress
-    private var baseMs = t0
+    /** Each printer moves on at its own moment, as a real fleet does, not all in the same second. */
+    private var baseMs = t0 - rnd.nextInt(PCT_EVERY_MS.toInt())
     private var doneMs = if (mix == Mix.DONE) t0 else 0L
     /** A done plate that waits to be cleared does not restart on its own. */
     private val restartAfterDone = allPrinting
