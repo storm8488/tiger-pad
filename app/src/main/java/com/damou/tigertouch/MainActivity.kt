@@ -8,6 +8,8 @@ import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -15,6 +17,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.damou.tigertouch.kiosk.Kiosk
 import com.damou.tigertouch.ui.DashboardScreen
@@ -88,80 +92,88 @@ class MainActivity : ComponentActivity() {
                 // The back key never leaves HOME: it closes the settings page, nothing else.
                 BackHandler { settings = false }
 
-                when (val p = phase) {
-                    Phase.Starting -> StartingScreen()
-                    is Phase.SignIn -> SignInScreen(p, onSignIn = app::signIn, onPair = app::startPairing)
-                    is Phase.Pairing -> PairingScreen(p, onRetry = app::startPairing, onBack = app::backToSignIn)
-                    // The night page in place of the others: nothing else is drawn under it.
-                    Phase.Dashboard -> if (app.night.mode == ScreenMode.NIGHT) {
-                        NightPage(fleet, events, app.night, demo.on)
-                    } else if (settings) {
-                        androidx.compose.runtime.LaunchedEffect(Unit) {
-                            while (true) { kiosk = kioskInfo(); delay(1000) }
-                        }
-                        SettingsScreen(
-                            email = app.cloud.email,
-                            entries = entries.value,
-                            kiosk = kiosk,
-                            onBack = { settings = false },
-                            onToggle = { id, on -> app.links.setEnabled(id, on) },
-                            onSignOut = { settings = false; app.signOut() },
-                            onSetPin = { pin -> kioskPrefs.edit().putString("pin", hash(pin)).apply(); kiosk = kioskInfo() },
-                            checkPin = { pin -> hash(pin) == kioskPrefs.getString("pin", null) },
-                            onKiosk = { action ->
-                                when (action) {
-                                    KioskAction.LEAVE -> {
-                                        Kiosk.leave(this@MainActivity)
-                                        startActivity(Intent(Settings.ACTION_SETTINGS))
+                // The pages move by a few pixels now and then (the night page moves its own content
+                // over a black that stays): read in the layer, a step recomposes nothing.
+                Box(Modifier.fillMaxSize().graphicsLayer {
+                    val on = app.night.mode != ScreenMode.NIGHT
+                    translationX = if (on) app.night.shiftX.toFloat() else 0f
+                    translationY = if (on) app.night.shiftY.toFloat() else 0f
+                }) {
+                    when (val p = phase) {
+                        Phase.Starting -> StartingScreen()
+                        is Phase.SignIn -> SignInScreen(p, onSignIn = app::signIn, onPair = app::startPairing)
+                        is Phase.Pairing -> PairingScreen(p, onRetry = app::startPairing, onBack = app::backToSignIn)
+                        // The night page in place of the others: nothing else is drawn under it.
+                        Phase.Dashboard -> if (app.night.mode == ScreenMode.NIGHT) {
+                            NightPage(fleet, events, app.night, demo.on)
+                        } else if (settings) {
+                            androidx.compose.runtime.LaunchedEffect(Unit) {
+                                while (true) { kiosk = kioskInfo(); delay(1000) }
+                            }
+                            SettingsScreen(
+                                email = app.cloud.email,
+                                entries = entries.value,
+                                kiosk = kiosk,
+                                onBack = { settings = false },
+                                onToggle = { id, on -> app.links.setEnabled(id, on) },
+                                onSignOut = { settings = false; app.signOut() },
+                                onSetPin = { pin -> kioskPrefs.edit().putString("pin", hash(pin)).apply(); kiosk = kioskInfo() },
+                                checkPin = { pin -> hash(pin) == kioskPrefs.getString("pin", null) },
+                                onKiosk = { action ->
+                                    when (action) {
+                                        KioskAction.LEAVE -> {
+                                            Kiosk.leave(this@MainActivity)
+                                            startActivity(Intent(Settings.ACTION_SETTINGS))
+                                        }
+                                        KioskAction.RELEASE -> Kiosk.release(this@MainActivity)
                                     }
-                                    KioskAction.RELEASE -> Kiosk.release(this@MainActivity)
-                                }
-                                kiosk = kioskInfo()
-                            },
-                            showBattery = showBattery,
-                            onShowBattery = { on ->
-                                showBattery = on
-                                uiPrefs.edit().putBoolean("show_battery", on).apply()
-                            },
-                            demo = demo,
-                            onDemo = app::setDemo,
-                            onIncident = { com.damou.tigertouch.demo.Demo.incident() },
-                            alertPrefs = alertPrefs,
-                            onAlertPrefs = app.events::setPrefs,
-                            onTryBeep = { app.events.beep(it) },
-                            nightPrefs = app.night.prefs,
-                            onNightPrefs = app.night::change,
-                            onShowNight = app.night::showNight,
-                        )
-                    } else {
-                        DashboardScreen(
-                            fleet = fleet,
-                            accountHasPrinters = accountHasPrinters,
-                            link = link,
-                            accountError = accountError,
-                            onRefresh = app::refreshPrinters,
-                            onSettings = { settings = true },
-                            onControl = app::control,
-                            cameras = cameras,
-                            showBattery = showBattery,
-                            demo = demo.on,
-                            density = density,
-                            onDensity = { d ->
-                                density = d
-                                uiPrefs.edit().putString("density", d.name).apply()
-                            },
-                            filter = filter,
-                            onFilter = { f ->
-                                app.filter.value = f
-                                uiPrefs.edit().putString("sort", f.sort.name).apply()
-                            },
-                            page = page,
-                            alerts = alerts,
-                            unacked = unacked,
-                            events = app.events.events,
-                            onAck = app.events::ack,
-                            onAckAll = app.events::ackAll,
-                        )
+                                    kiosk = kioskInfo()
+                                },
+                                showBattery = showBattery,
+                                onShowBattery = { on ->
+                                    showBattery = on
+                                    uiPrefs.edit().putBoolean("show_battery", on).apply()
+                                },
+                                demo = demo,
+                                onDemo = app::setDemo,
+                                onIncident = { com.damou.tigertouch.demo.Demo.incident() },
+                                alertPrefs = alertPrefs,
+                                onAlertPrefs = app.events::setPrefs,
+                                onTryBeep = { app.events.beep(it) },
+                                nightPrefs = app.night.prefs,
+                                onNightPrefs = app.night::change,
+                                onShowNight = app.night::showNight,
+                            )
+                        } else {
+                            DashboardScreen(
+                                fleet = fleet,
+                                accountHasPrinters = accountHasPrinters,
+                                link = link,
+                                accountError = accountError,
+                                onRefresh = app::refreshPrinters,
+                                onSettings = { settings = true },
+                                onControl = app::control,
+                                cameras = cameras,
+                                showBattery = showBattery,
+                                demo = demo.on,
+                                density = density,
+                                onDensity = { d ->
+                                    density = d
+                                    uiPrefs.edit().putString("density", d.name).apply()
+                                },
+                                filter = filter,
+                                onFilter = { f ->
+                                    app.filter.value = f
+                                    uiPrefs.edit().putString("sort", f.sort.name).apply()
+                                },
+                                page = page,
+                                alerts = alerts,
+                                unacked = unacked,
+                                events = app.events.events,
+                                onAck = app.events::ack,
+                                onAckAll = app.events::ackAll,
+                            )
+                        }
                     }
                 }
             }
