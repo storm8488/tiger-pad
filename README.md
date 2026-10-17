@@ -21,6 +21,22 @@ not affiliated with it.
   of live cards: state, progress, file, time left and end time, layers,
   nozzle(s), bed and chamber, AMS / CFS / external spool, pause, resume, stop
   (hold 1.5 s) and the light.
+- **A fleet at a glance**: three densities, switched from the header and
+  remembered. *Wall*: every printer on one screen (15 on the tablet, 5 × 3),
+  readable from three metres. *Cards*: the large cards. *List*: one row per
+  printer with its buttons. *Auto* (the default) picks the cards when they all
+  fit, the wall otherwise.
+- **What needs someone first**: errors, pauses, finished plates and spools
+  under 10 % come first, then the prints by end time. A summary under the
+  header counts each state (each counter is a filter) and says which print
+  ends next; a brand filter beside the sort.
+- **Alerts**: a print that finishes, pauses or stops on an error, a printer
+  silent for 2 min, a spool under 10 %: the printer blinks softly until it is
+  touched, a short beep (Settings > Alerts), the screen lights up, and a journal
+  of the last 100 events (the bell).
+- **Demo mode** (Settings > Demo): 1 to 20 made-up printers of every brand,
+  all printing or in a mix of states, for a showroom or for measuring. No
+  printer is reached while it is on.
 - **Brands**: Bambu Lab (LAN and cloud), Creality (K1 / K2 / Ender-3 V4,
   WebSocket), Klipper (Moonraker), OctoPrint, Prusa (PrusaLink), Snapmaker,
   Elegoo (Centauri Carbon 1 and 2), FlashForge, Anycubic (LAN and cloud).
@@ -31,8 +47,9 @@ not affiliated with it.
 Reference device: a Galaxy Tab 3 10.1 (GT-P5210) under LineageOS 14.1
 (Android 7.1, x86). Minimum: Android 7.0.
 
-Status: not yet built or run. The drivers that upstream marks as not tried
-against their machine stay untried here too.
+Status: runs on the reference tablet with a K1 Max and two Klipper printers.
+The drivers that upstream marks as not tried against their machine stay untried
+here too. Measures with 15 demo printers: [docs/perf.md](docs/perf.md).
 
 ## Build
 
@@ -85,4 +102,7 @@ Release the tablet* (PIN), or a factory reset.
 | `model/PrinterView.kt` | `printer_view_t` in `ui/ui_dashboard.h` |
 | `TouchApp.kt` | the application task of `main.c` |
 | `ui/` | the LVGL screens, redrawn for a tablet |
+| `demo/Demo.kt` | `demo_mode.c`, 1 to 20 printers |
+| `fleet/Fleet.kt` | new: what the home page draws, its order, its summary |
+| `events/Events.kt` | new: the alerts and their journal |
 | `kiosk/Kiosk.kt` | new |
