@@ -162,6 +162,42 @@ rest. A demo event is detected 0.28 s after it happens (logcat), well within the
 | PSS | 67 MB | 43 to 59 MB |
 | APK | 11.7 MB | 1.6 MB |
 
+## Priority 4 (night, screen saver)
+
+Commits `4522c86` to `b15dcd7`, compiled, measured at night (23:15 to 23:40,
+in the night hours 23 h – 7 h).
+
+What it adds, and what it costs:
+
+- **Dimming and night page** come from a tick every 5 s that reads the clock
+  and the idle time: it writes a state only when the mode changes, so it draws
+  nothing. The brightness is the window's (`screenBrightness`), set only on a
+  change of mode.
+- **The night page** is one node drawn with the platform's text, in place of
+  the printers page (nothing is drawn under it). Redrawn at each change of a
+  printer, it was 182 frames in 3 min at 20 ms each (69 % janky: a full-screen
+  redraw on this GPU); it now redraws when the minute turns or an alert comes
+  or goes, and reads the printers without watching them.
+- **The few pixels' move** every 3 min is a layer's translation: the tiles keep
+  their textures, one frame recomposites them.
+- **The touch that wakes** is taken in `dispatchTouchEvent` (and in the
+  full-page dialogs' window callback) before anything sees it.
+
+| | Frames | Janky | 50th pct | 90th pct | CPU (app) | PSS |
+|---|---|---|---|---|---|---|
+| Wall, awake, 3 min | 382 | 18 (**4.7 %**) | 9 ms | 13 ms | 1.0 % | 50.0 MB |
+| Night page, 3 min | **4** | 3 | 23 ms | 23 ms | **0.4 %** | 51.9 MB |
+| Waking (night → wall) | 10 | 3 | 10 ms | 81 ms | | |
+
+The Wall stays under the target (6.8 % before; the difference is the noise of
+two runs). Waking costs three frames of 69, 84 and 37 ms: the wall is composed
+again from nothing, while the backlight comes up. Keeping it composed under
+the night page would make the wake instant but redraw it all night.
+
+Waking on an event, logcat, with the demo's *In 2 min* incident while the night
+page was on: incident at 23:11:28.249, events seen at .885, full brightness at
+.897. A touch at night brings the wall back and opens nothing.
+
 ## What is still over the target
 
 - **Scrolling the cards: about 35 % janky.** A card is a large texture

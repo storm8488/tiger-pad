@@ -34,6 +34,10 @@ not affiliated with it.
   silent for 2 min, a spool under 10 %: the printer blinks softly until it is
   touched, a short beep (Settings > Alerts), the screen lights up, and a journal
   of the last 100 events (the bell).
+- **Night and screen saver** (Settings > Night): the screen dims after a few
+  minutes without a touch; in the night hours (23 h – 7 h by default) a black
+  page shows only the prints at work, their end and the alerts. A touch or an
+  event wakes it; the page moves by a few pixels every 3 minutes.
 - **Demo mode** (Settings > Demo): 1 to 20 made-up printers of every brand,
   all printing or in a mix of states, for a showroom or for measuring. No
   printer is reached while it is on.
@@ -105,4 +109,5 @@ Release the tablet* (PIN), or a factory reset.
 | `demo/Demo.kt` | `demo_mode.c`, 1 to 20 printers |
 | `fleet/Fleet.kt` | new: what the home page draws, its order, its summary |
 | `events/Events.kt` | new: the alerts and their journal |
+| `ui/Night.kt`, `ui/NightPage.kt` | new: dimming, the night page |
 | `kiosk/Kiosk.kt` | new |
