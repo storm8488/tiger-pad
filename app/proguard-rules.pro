@@ -1,0 +1,1 @@
+-keep class org.eclipse.paho.client.mqttv3.** { *; }
