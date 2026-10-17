@@ -69,6 +69,7 @@ fun SettingsScreen(
     demo: DemoConfig,
     onDemo: (DemoConfig) -> Unit,
     onIncident: () -> Unit,
+    onIncidentLater: () -> Unit,
     alertPrefs: AlertPrefs,
     onAlertPrefs: (AlertPrefs) -> Unit,
     onTryBeep: (Int) -> Unit,
@@ -132,7 +133,7 @@ fun SettingsScreen(
             item { AlertSettings(alertPrefs, onAlertPrefs, onTryBeep) }
 
             item { Section(Tr.t("Demo", "Démo")) }
-            item { DemoCard(demo, onDemo, onIncident) }
+            item { DemoCard(demo, onDemo, onIncident, onIncidentLater) }
 
             item { Section(Tr.t("Account", "Compte")) }
             item {
@@ -241,7 +242,7 @@ private fun PinDialog(title: String, onDismiss: () -> Unit, onPin: (String) -> B
 
 /** Demo mode: made-up printers, for a showroom and for measuring a large fleet. */
 @Composable
-private fun DemoCard(demo: DemoConfig, onDemo: (DemoConfig) -> Unit, onIncident: () -> Unit) {
+private fun DemoCard(demo: DemoConfig, onDemo: (DemoConfig) -> Unit, onIncident: () -> Unit, onIncidentLater: () -> Unit) {
     // The slider moves freely; the printers are made again only when it is let go.
     var count by remember(demo.count) { mutableStateOf(demo.count.toFloat()) }
     Column(
@@ -279,8 +280,12 @@ private fun DemoCard(demo: DemoConfig, onDemo: (DemoConfig) -> Unit, onIncident:
                 }
                 Switch(checked = demo.allPrinting, onCheckedChange = { onDemo(demo.copy(allPrinting = it)) })
             }
-            OutlinedButton(onClick = onIncident) {
-                Text(Tr.t("Cause an incident (an error and a finished print)", "Provoquer un incident (une erreur et une fin d'impression)"))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = onIncident) {
+                    Text(Tr.t("Cause an incident (an error and a finished print)", "Provoquer un incident (une erreur et une fin d'impression)"))
+                }
+                // Leaves time to put the screen to sleep, to see it wake.
+                OutlinedButton(onClick = onIncidentLater) { Text(Tr.t("In 2 min", "Dans 2 min")) }
             }
         }
     }

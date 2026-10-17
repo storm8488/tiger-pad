@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -81,7 +82,10 @@ class MainActivity : ComponentActivity() {
                 // The screen saver looks at the clock and the idle time every few seconds: no frame unless it changes.
                 LaunchedEffect(Unit) { while (true) { app.night.tick(); delay(5000) } }
                 LaunchedEffect(Unit) {
-                    snapshotFlow { app.night.brightness() }.collect { Screen.brightness(this@MainActivity, it) }
+                    snapshotFlow { app.night.brightness() }.collect {
+                        Log.i("night", "${app.night.mode} brightness $it")
+                        Screen.brightness(this@MainActivity, it)
+                    }
                 }
                 var density by remember {
                     mutableStateOf(runCatching { Density.valueOf(uiPrefs.getString("density", "")!!) }.getOrDefault(Density.AUTO))
@@ -137,6 +141,9 @@ class MainActivity : ComponentActivity() {
                                 demo = demo,
                                 onDemo = app::setDemo,
                                 onIncident = { com.damou.tigertouch.demo.Demo.incident() },
+                                onIncidentLater = {
+                                    android.os.Handler(mainLooper).postDelayed({ com.damou.tigertouch.demo.Demo.incident() }, 120_000)
+                                },
                                 alertPrefs = alertPrefs,
                                 onAlertPrefs = app.events::setPrefs,
                                 onTryBeep = { app.events.beep(it) },

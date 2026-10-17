@@ -122,9 +122,12 @@ private class NightText(rows: List<NightRow>, minute: Long, k: Pens, demo: Boole
             lines += b to PointF(w - pad - b.w, clockTop + k.px(4))
         }
         val top = clockTop + clock.h + k.px(20)
-        val rowH = k.px(46)
-        val perCol = ((h - top - k.px(16)) / rowH).toInt().coerceAtLeast(1)
-        val cols = if (rows.size > perCol) 2 else 1
+        // One column while the lines fit at 38 px; then two, the lines shared evenly.
+        val avail = h - top - k.px(16)
+        val fit = (avail / k.px(38)).toInt().coerceAtLeast(1)
+        val cols = if (rows.size <= fit) 1 else 2
+        val perCol = minOf(fit, (rows.size + cols - 1) / cols).coerceAtLeast(1)
+        val rowH = minOf(k.px(46), avail / perCol)
         val colW = (w - 2 * pad - (cols - 1) * pad) / cols
         // What does not fit is counted on the last line.
         val shown = if (rows.size > perCol * cols) perCol * cols - 1 else rows.size
