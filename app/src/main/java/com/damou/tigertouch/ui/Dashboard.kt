@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -89,12 +90,17 @@ fun DashboardScreen(
     onRefresh: () -> Unit,
     onSettings: () -> Unit,
     onControl: (String, PvControl) -> Unit,
+    /** MJPEG stream URL by printer id, for the printers that have a camera. */
+    cameras: Map<String, String> = emptyMap(),
+    /** The tablet's battery beside the clock (Settings: off for a tablet that never leaves its charger). */
+    showBattery: Boolean = true,
 ) {
     var openId by remember { mutableStateOf<String?>(null) }
+    var camId by remember { mutableStateOf<String?>(null) }
     val shown = entries.filter { it.enabled }
 
     Column(Modifier.fillMaxSize().background(Pal.bg)) {
-        Header(link, onRefresh, onSettings)
+        Header(link, showBattery, onRefresh, onSettings)
         if (accountError.isNotEmpty()) {
             Text(accountError, color = Pal.muted, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp))
         }
@@ -117,7 +123,10 @@ fun DashboardScreen(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 items(shown, key = { it.printer.id }) { e ->
-                    PrinterCard(e, onOpen = { openId = e.printer.id }, onControl = { onControl(e.printer.id, it) })
+                    PrinterCard(
+                        e, onOpen = { openId = e.printer.id }, onControl = { onControl(e.printer.id, it) },
+                        onCamera = cameras[e.printer.id]?.let { { camId = e.printer.id } },
+                    )
                 }
             }
         }
@@ -126,13 +135,22 @@ fun DashboardScreen(
     val open = shown.firstOrNull { it.printer.id == openId }
     if (open != null) {
         Dialog(onDismissRequest = { openId = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            PrinterFull(open, onClose = { openId = null }, onControl = { onControl(open.printer.id, it) })
+            PrinterFull(
+                open, onClose = { openId = null }, onControl = { onControl(open.printer.id, it) },
+                onCamera = cameras[open.printer.id]?.let { { camId = open.printer.id } },
+            )
         }
+    }
+
+    val cam = camId?.let { id -> cameras[id]?.let { url -> id to url } }
+    if (cam != null) {
+        val name = entries.firstOrNull { it.printer.id == cam.first }?.printer?.name ?: ""
+        CameraDialog(title = name, url = cam.second, onClose = { camId = null })
     }
 }
 
 @Composable
-private fun Header(link: CloudLink, onRefresh: () -> Unit, onSettings: () -> Unit) {
+private fun Header(link: CloudLink, showBattery: Boolean, onRefresh: () -> Unit, onSettings: () -> Unit) {
     var now by remember { mutableStateOf(Date()) }
     LaunchedEffect(Unit) {
         while (true) { now = Date(); delay(1000) }
@@ -144,6 +162,10 @@ private fun Header(link: CloudLink, onRefresh: () -> Unit, onSettings: () -> Uni
         Text("Tiger Touch", color = Pal.accent, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.weight(1f))
         Text(SimpleDateFormat("HH:mm", Locale.getDefault()).format(now), color = Pal.text, fontSize = 24.sp)
+        if (showBattery) {
+            Spacer(Modifier.width(16.dp))
+            BatteryIndicator()
+        }
         Spacer(Modifier.width(20.dp))
         val (icon, tint) = when (link) {
             CloudLink.OK -> Icons.Filled.Cloud to Pal.ok
@@ -158,7 +180,7 @@ private fun Header(link: CloudLink, onRefresh: () -> Unit, onSettings: () -> Uni
 
 /** One printer: the firmware's card (ui/ui_cards.c), larger. */
 @Composable
-private fun PrinterCard(e: PrinterEntry, onOpen: () -> Unit, onControl: (PvControl) -> Unit) {
+private fun PrinterCard(e: PrinterEntry, onOpen: () -> Unit, onControl: (PvControl) -> Unit, onCamera: (() -> Unit)?) {
     val v = e.view ?: PrinterView(name = e.printer.name, brand = e.printer.brand)
     Column(
         Modifier
@@ -176,7 +198,7 @@ private fun PrinterCard(e: PrinterEntry, onOpen: () -> Unit, onControl: (PvContr
         JobBlock(v)
         TempRow(v, tileHeight = 64.dp)
         Units(v, compact = true)
-        JobButtons(v, onControl, size = 56.dp)
+        JobButtons(v, onControl, size = 56.dp, onCamera = onCamera)
     }
 }
 
@@ -316,7 +338,7 @@ private fun readableOn(c: Int): Color {
  * dimmed and inert when they cannot act. Stop is a hold of 1.5 s, pause a touch.
  */
 @Composable
-private fun JobButtons(v: PrinterView, onControl: (PvControl) -> Unit, size: Dp) {
+private fun JobButtons(v: PrinterView, onControl: (PvControl) -> Unit, size: Dp, onCamera: (() -> Unit)? = null) {
     val canJob = v.online && v.canControl && v.jobActive
     val canLight = v.online && v.canLight
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -328,6 +350,8 @@ private fun JobButtons(v: PrinterView, onControl: (PvControl) -> Unit, size: Dp)
         ) { onControl(if (paused) PvControl.RESUME else PvControl.PAUSE) }
         HoldToStop(enabled = canJob, size = size) { onControl(PvControl.STOP) }
         Spacer(Modifier.weight(1f))
+        // Only drawn when the printer has a camera this app can show.
+        if (onCamera != null) RoundButton(Icons.Filled.Videocam, Tr.t("Camera", "Caméra"), enabled = true, size = size, onClick = onCamera)
         RoundButton(
             if (v.lightOn) Icons.Filled.Lightbulb else Icons.Outlined.Lightbulb,
             Tr.t("Light", "Lumière"), enabled = canLight, size = size,
@@ -386,7 +410,7 @@ private fun HoldToStop(enabled: Boolean, size: Dp, onStop: () -> Unit) {
 
 /** The full view of one printer: bigger tiles, the spools with their material and what is left. */
 @Composable
-private fun PrinterFull(e: PrinterEntry, onClose: () -> Unit, onControl: (PvControl) -> Unit) {
+private fun PrinterFull(e: PrinterEntry, onClose: () -> Unit, onControl: (PvControl) -> Unit, onCamera: (() -> Unit)?) {
     val v = e.view ?: PrinterView(name = e.printer.name, brand = e.printer.brand)
     Column(
         Modifier.fillMaxSize().background(Pal.bg).padding(28.dp),
@@ -404,6 +428,6 @@ private fun PrinterFull(e: PrinterEntry, onClose: () -> Unit, onControl: (PvCont
         TempRow(v, tileHeight = 96.dp)
         Units(v, compact = false)
         Spacer(Modifier.weight(1f))
-        JobButtons(v, onControl, size = 84.dp)
+        JobButtons(v, onControl, size = 84.dp, onCamera = onCamera)
     }
 }

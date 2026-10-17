@@ -29,6 +29,7 @@ class MainActivity : ComponentActivity() {
 
     private val app get() = application as TouchApp
     private val kioskPrefs by lazy { getSharedPreferences("kiosk", Context.MODE_PRIVATE) }
+    private val uiPrefs by lazy { getSharedPreferences("ui", Context.MODE_PRIVATE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,8 +39,10 @@ class MainActivity : ComponentActivity() {
                 val phase by app.phase.collectAsStateWithLifecycle()
                 val entries by app.links.entries.collectAsStateWithLifecycle()
                 val accountError by app.accountError.collectAsStateWithLifecycle()
+                val cameras by app.cameras.collectAsStateWithLifecycle()
                 var settings by remember { mutableStateOf(false) }
                 var kiosk by remember { mutableStateOf(kioskInfo()) }
+                var showBattery by remember { mutableStateOf(uiPrefs.getBoolean("show_battery", true)) }
                 // The back key never leaves HOME: it closes the settings page, nothing else.
                 BackHandler { settings = false }
 
@@ -70,6 +73,11 @@ class MainActivity : ComponentActivity() {
                                 }
                                 kiosk = kioskInfo()
                             },
+                            showBattery = showBattery,
+                            onShowBattery = { on ->
+                                showBattery = on
+                                uiPrefs.edit().putBoolean("show_battery", on).apply()
+                            },
                         )
                     } else {
                         DashboardScreen(
@@ -79,6 +87,8 @@ class MainActivity : ComponentActivity() {
                             onRefresh = app::refreshPrinters,
                             onSettings = { settings = true },
                             onControl = app::control,
+                            cameras = cameras,
+                            showBattery = showBattery,
                         )
                     }
                 }

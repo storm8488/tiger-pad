@@ -60,6 +60,8 @@ fun SettingsScreen(
     onSetPin: (String) -> Unit,
     checkPin: (String) -> Boolean,
     onKiosk: (KioskAction) -> Unit,
+    showBattery: Boolean,
+    onShowBattery: (Boolean) -> Unit,
 ) {
     var askPinFor by remember { mutableStateOf<KioskAction?>(null) }
     var settingPin by remember { mutableStateOf(false) }
@@ -89,6 +91,24 @@ fun SettingsScreen(
                         )
                     }
                     Switch(checked = e.enabled, enabled = e.supported, onCheckedChange = { onToggle(e.printer.id, it) })
+                }
+            }
+
+            item { Section(Tr.t("Display", "Affichage")) }
+            item {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Pal.card).padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(Tr.t("Show the battery", "Afficher la batterie"), color = Pal.text, fontSize = 18.sp)
+                        Text(
+                            Tr.t("Beside the clock. Off for a tablet that stays on its charger.",
+                                "À côté de l'heure. À désactiver pour une tablette toujours sur secteur."),
+                            color = Pal.muted, fontSize = 14.sp,
+                        )
+                    }
+                    Switch(checked = showBattery, onCheckedChange = onShowBattery)
                 }
             }
 

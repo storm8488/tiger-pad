@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.net.wifi.WifiManager
 import android.util.Log
+import com.damou.tigertouch.cam.Cameras
 import com.damou.tigertouch.cloud.Cloud
 import com.damou.tigertouch.cloud.CloudErr
 import com.damou.tigertouch.cloud.PairStart
@@ -69,6 +70,12 @@ class TouchApp : Application() {
     val accountError: StateFlow<String> = _accountError
 
     private var printers: List<AccountPrinter> = emptyList()
+
+    private val _cameras = MutableStateFlow<Map<String, String>>(emptyMap())
+    /** MJPEG stream URL by printer id, for the printers that have a camera this app can show. */
+    val cameras: StateFlow<Map<String, String>> = _cameras
+    /** The printer as it was when its camera was looked for: looked for again when the account changes it. */
+    private val camerasFor = HashMap<String, AccountPrinter>()
     private var sessionJob: Job? = null
     private var pairJob: Job? = null
 
@@ -157,6 +164,8 @@ class TouchApp : Application() {
         links.closeAll()
         links.setPrinters(emptyList())
         printers = emptyList()
+        camerasFor.clear()
+        _cameras.value = emptyMap()
         cloud.signOut()
         _phase.value = Phase.SignIn()
     }
@@ -192,7 +201,20 @@ class TouchApp : Application() {
         printers = r.printers
         links.setPrinters(printers)
         links.setNetworkReady(true)
+        findCameras()
         return true
+    }
+
+    /** Looks for the camera of every printer that is new or changed since the last look. */
+    private fun findCameras() {
+        val todo = printers.filter { camerasFor[it.id] != it }
+        todo.forEach { camerasFor[it.id] = it }
+        val ids = printers.map { it.id }.toSet()
+        _cameras.value = _cameras.value.filterKeys { it in ids }
+        for (p in todo) scope.launch {
+            val url = Cameras.find(p, Net.lanHttp)
+            _cameras.value = if (url != null) _cameras.value + (p.id to url) else _cameras.value - p.id
+        }
     }
 
     private suspend fun printersLoop() {
