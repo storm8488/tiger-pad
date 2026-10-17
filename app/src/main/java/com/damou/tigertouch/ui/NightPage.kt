@@ -15,6 +15,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Color
@@ -68,14 +69,19 @@ private val NIGHT_MUTED = Color(0xFF6E737C)
 
 /**
  * The night page: black, the time, the prints at work with their end, and the
- * alerts. One node, drawn with the platform's text: it redraws when one of its
- * lines changes or the minute turns, and nothing moves in between. Shifted by
- * a few pixels now and then by [night]. No touch handler: the touch that wakes
- * the screen is taken before it gets here.
+ * alerts. One node, drawn with the platform's text. It redraws when the minute
+ * turns or an alert comes or goes, not at each change of a printer: a redraw
+ * of the whole screen costs this GPU about 20 ms, and nobody needs the per cent
+ * of a print by the second at night. Shifted by a few pixels now and then by
+ * [night]. No touch handler: the touch that wakes the screen is taken before
+ * it gets here.
  */
 @Composable
 fun NightPage(fleet: FleetView, events: State<List<FleetEvent>>, night: Night, demo: Boolean) {
-    val rows by remember { derivedStateOf { nightRows(fleet, events.value) } }
+    // Which printers have an alert, and which: the one change that redraws at once.
+    val alerts by remember {
+        derivedStateOf { events.value.filter { !it.acked }.map { it.printerId to it.kind }.distinct() }
+    }
     val minute = remember { mutableStateOf(System.currentTimeMillis() / 60_000L) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -91,7 +97,11 @@ fun NightPage(fleet: FleetView, events: State<List<FleetEvent>>, night: Night, d
                 .fillMaxSize()
                 .graphicsLayer { translationX = night.shiftX.toFloat(); translationY = night.shiftY.toFloat() }
                 .drawWithCache {
-                    val t = NightText(rows, minute.value, pens, demo, size.width, size.height)
+                    alerts.size // read: an alert redraws
+                    val m = minute.value
+                    // The printers are read without being watched: they wait for the next minute.
+                    val rows = Snapshot.withoutReadObservation { nightRows(fleet, events.value) }
+                    val t = NightText(rows, m, pens, demo, size.width, size.height)
                     onDrawBehind { t.draw(drawContext.canvas.nativeCanvas) }
                 },
         )
