@@ -198,7 +198,7 @@ private class ElegooLink(p: AccountPrinter, env: DriverEnv) : PrinterLink {
         }
         // The first command a client sends is its hostname; the printer ignores
         // the rest until it has it.
-        sendMethod(1043, "{\"hostname\":\"PrintWall\"}")
+        sendMethod(1043, "{\"hostname\":\"Tiger Pad\"}")
         sendMethod(1002, "{}")
         sendMethod(2005, "{}")
         synchronized(lock) {

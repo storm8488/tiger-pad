@@ -55,7 +55,7 @@ import com.google.zxing.qrcode.QRCodeWriter
 fun StartingScreen() {
     Box(Modifier.fillMaxSize().background(Pal.bg), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("PrintWall", color = Pal.accent, fontSize = 44.sp, fontWeight = FontWeight.Bold)
+            Text("Tiger Pad", color = Pal.accent, fontSize = 44.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(24.dp))
             CircularProgressIndicator(color = Pal.accent)
         }
@@ -76,7 +76,7 @@ fun SignInScreen(phase: Phase.SignIn, onSignIn: (String, String) -> Unit, onPair
             Modifier.widthIn(max = 520.dp).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("PrintWall", color = Pal.accent, fontSize = 40.sp, fontWeight = FontWeight.Bold)
+            Text("Tiger Pad", color = Pal.accent, fontSize = 40.sp, fontWeight = FontWeight.Bold)
             Text(Tr.t("Sign in to your TigerTag account", "Connectez-vous à votre compte TigerTag"),
                 color = Pal.text, fontSize = 20.sp)
             OutlinedTextField(
