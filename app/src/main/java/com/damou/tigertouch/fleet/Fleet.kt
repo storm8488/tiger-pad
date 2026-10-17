@@ -160,3 +160,90 @@ class FleetMapper {
         )
     }
 }
+
+/** How the home page orders the printers. */
+enum class SortBy {
+    /** What asks for someone first: error, pause, finished plate, low spool, then printing by end time, idle, offline. */
+    SMART,
+    NAME,
+    /** The prints that end first; no end last. */
+    END,
+    BRAND;
+
+    fun label(): String = when (this) {
+        SMART -> Tr.t("Needs action", "Action requise")
+        NAME -> Tr.t("Name", "Nom")
+        END -> Tr.t("End time", "Heure de fin")
+        BRAND -> Tr.t("Brand", "Marque")
+    }
+}
+
+/** One counter of the header's summary, which is also a filter. */
+enum class StateFilter {
+    PRINTING, PAUSED, ERROR, DONE, LOW_SPOOL, IDLE, OFFLINE;
+
+    fun matches(p: PrinterUi): Boolean = when (this) {
+        PRINTING -> p.online && p.state == PvState.PRINTING
+        PAUSED -> p.online && p.state == PvState.PAUSED
+        ERROR -> p.online && p.state == PvState.ERROR
+        DONE -> p.online && p.state == PvState.DONE
+        LOW_SPOOL -> p.online && p.spool in 0 until PrinterUi.LOW_SPOOL
+        IDLE -> p.online && p.state == PvState.IDLE
+        OFFLINE -> !p.online
+    }
+
+    fun label(n: Int): String = when (this) {
+        PRINTING -> Tr.t("$n printing", "$n en impression")
+        PAUSED -> Tr.t("$n paused", "$n en pause")
+        ERROR -> Tr.t(if (n > 1) "$n errors" else "$n error", if (n > 1) "$n erreurs" else "$n erreur")
+        DONE -> Tr.t("$n done", if (n > 1) "$n terminées" else "$n terminée")
+        LOW_SPOOL -> Tr.t("$n low spool", if (n > 1) "$n bobines basses" else "$n bobine basse")
+        IDLE -> Tr.t("$n idle", "$n au repos")
+        OFFLINE -> Tr.t("$n offline", "$n hors ligne")
+    }
+}
+
+/** What the home page shows: which printers, in which order. */
+@Immutable
+data class FleetFilter(val sort: SortBy = SortBy.SMART, val state: StateFilter? = null, val brand: String? = null) {
+    val active: Boolean get() = state != null || brand != null
+}
+
+/** The printers [f] lets through, in its order. */
+fun arrange(all: List<PrinterUi>, f: FleetFilter): List<PrinterUi> {
+    val shown = all.filter { (f.state == null || f.state.matches(it)) && (f.brand == null || it.brand == f.brand) }
+    val byName = compareBy<PrinterUi, String>(String.CASE_INSENSITIVE_ORDER) { it.name }
+    // An end time to sort by: a print with none goes after those that have one.
+    val end = compareBy<PrinterUi> { if (it.jobActive && it.endMin > 0) it.endMin else Long.MAX_VALUE }
+    return shown.sortedWith(
+        when (f.sort) {
+            SortBy.SMART -> compareBy<PrinterUi> { it.attention.ordinal }.then(end).then(byName)
+            SortBy.NAME -> byName
+            SortBy.END -> end.then(byName)
+            SortBy.BRAND -> compareBy<PrinterUi, String>(String.CASE_INSENSITIVE_ORDER) { com.damou.tigertouch.model.Brands.label(it.brand) }.then(byName)
+        },
+    )
+}
+
+/** The header's summary: a count per state (the zero ones left out), and the next print to end. */
+@Immutable
+data class Summary(
+    val counts: List<Pair<StateFilter, Int>>,
+    val nextName: String,
+    /** Minutes since the epoch, 0 when nothing prints. */
+    val nextEndMin: Long,
+    /** The brands of the fleet, for the brand filter. */
+    val brands: List<String>,
+)
+
+fun summarize(all: List<PrinterUi>): Summary {
+    val counts = StateFilter.entries.map { f -> f to all.count { f.matches(it) } }.filter { it.second > 0 }
+    val next = all.filter { it.online && it.state == PvState.PRINTING && it.endMin > 0 }.minByOrNull { it.endMin }
+    return Summary(counts, next?.name ?: "", next?.endMin ?: 0, all.map { it.brand }.distinct().sorted())
+}
+
+/** The home page, ready to draw: the printers shown, in their order, and the summary. */
+@Immutable
+data class FleetPage(val ids: List<String> = emptyList(), val summary: Summary = Summary(emptyList(), "", 0, emptyList()))
+
+fun page(all: List<PrinterUi>, f: FleetFilter) = FleetPage(arrange(all, f).map { it.id }, summarize(all))

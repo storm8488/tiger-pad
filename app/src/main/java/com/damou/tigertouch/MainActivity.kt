@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.damou.tigertouch.kiosk.Kiosk
 import com.damou.tigertouch.ui.DashboardScreen
+import com.damou.tigertouch.fleet.SortBy
 import com.damou.tigertouch.ui.Density
 import com.damou.tigertouch.ui.rememberFleetView
 import com.damou.tigertouch.ui.KioskAction
@@ -37,6 +38,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Kiosk.enter(this)
+        // The sort is remembered; the filters last until the app restarts.
+        if (savedInstanceState == null) app.filter.value = app.filter.value.copy(
+            sort = runCatching { SortBy.valueOf(uiPrefs.getString("sort", "")!!) }.getOrDefault(SortBy.SMART),
+        )
         setContent {
             TouchTheme {
                 val phase by app.phase.collectAsStateWithLifecycle()
@@ -52,6 +57,8 @@ class MainActivity : ComponentActivity() {
                 val cameras by app.cameras.collectAsStateWithLifecycle()
                 val demo by app.demo.collectAsStateWithLifecycle()
                 val fleet = rememberFleetView(app.fleet)
+                val filter by app.filter.collectAsStateWithLifecycle()
+                val page by app.page.collectAsStateWithLifecycle()
                 var density by remember {
                     mutableStateOf(runCatching { Density.valueOf(uiPrefs.getString("density", "")!!) }.getOrDefault(Density.AUTO))
                 }
@@ -114,6 +121,12 @@ class MainActivity : ComponentActivity() {
                                 density = d
                                 uiPrefs.edit().putString("density", d.name).apply()
                             },
+                            filter = filter,
+                            onFilter = { f ->
+                                app.filter.value = f
+                                uiPrefs.edit().putString("sort", f.sort.name).apply()
+                            },
+                            page = page,
                         )
                     }
                 }

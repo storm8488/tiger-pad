@@ -71,7 +71,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.damou.tigertouch.cloud.CloudLink
 import com.damou.tigertouch.drivers.Tr
+import com.damou.tigertouch.fleet.FleetFilter
 import com.damou.tigertouch.fleet.JobUi
+import com.damou.tigertouch.fleet.FleetPage
 import com.damou.tigertouch.fleet.PrinterUi
 import com.damou.tigertouch.fleet.TempUi
 import com.damou.tigertouch.fleet.UnitUi
@@ -122,6 +124,11 @@ fun DashboardScreen(
     onControl: (String, PvControl) -> Unit,
     density: Density,
     onDensity: (Density) -> Unit,
+    /** Which printers, in which order. */
+    filter: FleetFilter,
+    onFilter: (FleetFilter) -> Unit,
+    /** The printers shown and the summary, as [filter] makes them. */
+    page: FleetPage,
     /** MJPEG stream URL by printer id, for the printers that have a camera. */
     cameras: Map<String, String> = emptyMap(),
     /** The tablet's battery beside the clock (Settings: off for a tablet that never leaves its charger). */
@@ -131,19 +138,27 @@ fun DashboardScreen(
 ) {
     var openId by remember { mutableStateOf<String?>(null) }
     var camId by remember { mutableStateOf<String?>(null) }
-    // The order of the printers: this screen recomposes when it changes, not at every refresh.
-    val ids = fleet.ids
+    // The printers shown, in their order: this screen recomposes when that changes, not at every refresh.
+    // Kept as the same instances while equal: the views below skip when they did not change.
+    val ids = remember(page.ids) { page.ids }
+    val summary = page.summary
+    val brands = remember(summary.brands) { summary.brands }
     var area by remember { mutableStateOf(IntSize.Zero) }
 
     // No background: the window's is Pal.bg (themes.xml).
     Column(Modifier.fillMaxSize()) {
-        Header(link, showBattery, demo, density, onDensity, onRefresh, onSettings)
+        Header(link, showBattery, demo, density, onDensity, onRefresh, onSettings, filter, brands, onFilter)
+        if (fleet.ids.isNotEmpty()) SummaryBar(summary, filter, onFilter)
         if (accountError.isNotEmpty()) {
             Text(accountError, color = Pal.muted, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp))
         }
         if (ids.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
+                if (filter.active && fleet.ids.isNotEmpty()) Text(
+                    Tr.t("No printer matches the filter.", "Aucune imprimante ne correspond au filtre."),
+                    color = Pal.muted, fontSize = 20.sp,
+                    modifier = Modifier.clickable { onFilter(filter.copy(state = null, brand = null)) }.padding(16.dp),
+                ) else Text(
                     if (!accountHasPrinters) Tr.t(
                         "No printer in the account yet. Add them in Tiger Studio Manager.",
                         "Aucune imprimante dans le compte. Ajoutez-les dans Tiger Studio Manager.",
@@ -197,16 +212,21 @@ private fun autoDensity(n: Int, w: Int, h: Int): Density {
 @Composable
 private fun Header(
     link: CloudLink, showBattery: Boolean, demo: Boolean, density: Density, onDensity: (Density) -> Unit,
-    onRefresh: () -> Unit, onSettings: () -> Unit,
+    onRefresh: () -> Unit, onSettings: () -> Unit, filter: FleetFilter, brands: List<String>, onFilter: (FleetFilter) -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth().height(64.dp).padding(start = 20.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Tiger Touch", color = Pal.accent, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        if (demo) DemoBadge(Modifier.padding(start = 12.dp))
-        Spacer(Modifier.width(24.dp))
+        Text("Tiger Touch", color = Pal.accent, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        if (demo) DemoBadge(Modifier.padding(start = 10.dp))
+        Spacer(Modifier.width(16.dp))
         DensitySwitch(density, onDensity)
+        Spacer(Modifier.width(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SortMenu(filter, onFilter)
+            BrandMenu(brands, filter, onFilter)
+        }
         Spacer(Modifier.weight(1f))
         Clock()
         if (showBattery) {
@@ -245,7 +265,7 @@ private fun DensitySwitch(density: Density, onDensity: (Density) -> Unit) {
                     .height(44.dp)
                     .background(if (on) Pal.tile else Color.Transparent, RoundedCornerShape(12.dp))
                     .clickable { onDensity(d) }
-                    .padding(horizontal = 16.dp),
+                    .padding(horizontal = 14.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(d.label(), color = if (on) Pal.accent else Pal.muted, fontSize = 16.sp,

@@ -13,7 +13,10 @@ import com.damou.tigertouch.cloud.Presence
 import com.damou.tigertouch.demo.Demo
 import com.damou.tigertouch.demo.DemoConfig
 import com.damou.tigertouch.drivers.DriverEnv
+import com.damou.tigertouch.fleet.FleetFilter
 import com.damou.tigertouch.fleet.FleetMapper
+import com.damou.tigertouch.fleet.FleetPage
+import com.damou.tigertouch.fleet.page
 import com.damou.tigertouch.fleet.PrinterUi
 import com.damou.tigertouch.links.Links
 import com.damou.tigertouch.model.AccountPrinter
@@ -27,6 +30,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -76,6 +80,13 @@ class TouchApp : Application() {
     lateinit var fleet: StateFlow<List<PrinterUi>>
         private set
 
+    /** Which printers the home page shows, in which order: set by the screen. */
+    val filter = MutableStateFlow(FleetFilter())
+
+    /** The home page's order and summary, made off the main thread; emits only when they change. */
+    lateinit var page: StateFlow<FleetPage>
+        private set
+
     private val _phase = MutableStateFlow<Phase>(Phase.Starting)
     val phase: StateFlow<Phase> = _phase
 
@@ -114,6 +125,8 @@ class TouchApp : Application() {
         val mapper = FleetMapper()
         fleet = links.entries.map { mapper.map(it) }.flowOn(Dispatchers.Default)
             .stateIn(scope, SharingStarted.Eagerly, emptyList())
+        page = combine(fleet, filter) { all, f -> page(all, f) }.flowOn(Dispatchers.Default)
+            .stateIn(scope, SharingStarted.Eagerly, FleetPage())
         scope.launch { start() }
     }
 

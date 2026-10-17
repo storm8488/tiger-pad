@@ -21,13 +21,9 @@ import kotlinx.coroutines.flow.StateFlow
 class FleetView {
     private val one = HashMap<String, MutableState<PrinterUi?>>()
     private val _ids = mutableStateOf<List<String>>(emptyList())
-    private val _all = mutableStateOf<List<PrinterUi>>(emptyList())
 
     /** The printers' ids, in the order the account gives them. */
     val ids: List<String> get() = _ids.value
-
-    /** Every printer: for what sums the fleet up. Reading it recomposes at every change. */
-    val all: List<PrinterUi> get() = _all.value
 
     /** This printer; the reader recomposes only when it changes. */
     fun get(id: String): PrinterUi? = state(id).value
@@ -42,7 +38,6 @@ class FleetView {
             _ids.value = ids
             one.keys.retainAll(ids.toSet())
         }
-        _all.value = list
     }
 }
 
