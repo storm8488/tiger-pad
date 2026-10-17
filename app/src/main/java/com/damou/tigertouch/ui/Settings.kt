@@ -154,7 +154,7 @@ fun SettingsScreen(
                 ) {
                     Text(
                         when {
-                            kiosk.locked -> Tr.t("Locked: the tablet only runs Tiger Touch.", "Verrouillé : la tablette n'exécute que Tiger Touch.")
+                            kiosk.locked -> Tr.t("Locked: the tablet only runs PrintWall.", "Verrouillé : la tablette n'exécute que PrintWall.")
                             kiosk.deviceOwner -> Tr.t("Device owner, not locked until the next start.", "Propriétaire de l'appareil, déverrouillé jusqu'au prochain démarrage.")
                             else -> Tr.t(
                                 "Home screen only. For the full lock, make the app device owner (see README).",
@@ -178,7 +178,7 @@ fun SettingsScreen(
             }
             item {
                 Spacer(Modifier.height(12.dp))
-                Text("Tiger Touch Android ${BuildConfig.VERSION_NAME}", color = Pal.muted, fontSize = 13.sp)
+                Text("PrintWall ${BuildConfig.VERSION_NAME} · unofficial, not supported by TigerTag", color = Pal.muted, fontSize = 13.sp)
                 Spacer(Modifier.height(24.dp))
             }
         }

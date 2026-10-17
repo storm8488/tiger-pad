@@ -242,7 +242,7 @@ private fun Header(
         Modifier.fillMaxWidth().height(64.dp).padding(start = 20.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Tiger Touch", color = Pal.accent, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text("PrintWall", color = Pal.accent, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         if (demo) DemoBadge(Modifier.padding(start = 10.dp))
         Spacer(Modifier.width(16.dp))
         DensitySwitch(density, onDensity)
