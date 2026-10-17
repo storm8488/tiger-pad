@@ -23,5 +23,6 @@ object Drivers {
 
     /** null when no driver can reach this printer. */
     fun forPrinter(p: AccountPrinter): PrinterDriver? =
-        REGISTRY.firstOrNull { it.brand == p.brand && it.support(p) != DrvKind.NONE }
+        if (p.demo) com.damou.tigertouch.demo.Demo.DRIVER
+        else REGISTRY.firstOrNull { it.brand == p.brand && it.support(p) != DrvKind.NONE }
 }

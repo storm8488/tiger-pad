@@ -10,6 +10,8 @@ import com.damou.tigertouch.cloud.CloudErr
 import com.damou.tigertouch.cloud.PairStart
 import com.damou.tigertouch.cloud.PairStatus
 import com.damou.tigertouch.cloud.Presence
+import com.damou.tigertouch.demo.Demo
+import com.damou.tigertouch.demo.DemoConfig
 import com.damou.tigertouch.drivers.DriverEnv
 import com.damou.tigertouch.links.Links
 import com.damou.tigertouch.model.AccountPrinter
@@ -76,6 +78,9 @@ class TouchApp : Application() {
     val cameras: StateFlow<Map<String, String>> = _cameras
     /** The printer as it was when its camera was looked for: looked for again when the account changes it. */
     private val camerasFor = HashMap<String, AccountPrinter>()
+    private val _demo = MutableStateFlow(DemoConfig())
+    /** Demo mode: made-up printers in place of the account's, none of them reached. */
+    val demo: StateFlow<DemoConfig> = _demo
     private var sessionJob: Job? = null
     private var pairJob: Job? = null
 
@@ -92,6 +97,7 @@ class TouchApp : Application() {
         cloud = Cloud(this, Net.http)
         val env = DriverEnv(Net.http, Net.lanHttp, cloud, CoroutineScope(SupervisorJob() + Dispatchers.IO))
         links = Links(this, env)
+        _demo.value = Demo.load(this)
         links.run(scope)
         scope.launch { start() }
     }
@@ -172,8 +178,30 @@ class TouchApp : Application() {
 
     // ---- Signed in ----------------------------------------------------------------
 
+    /** Switches demo mode, or changes its printers: every link is closed and opened again. */
+    fun setDemo(c: DemoConfig) {
+        val was = _demo.value
+        Demo.save(this, c)
+        _demo.value = c
+        if (was != c && (c.on || was.on)) applyDemo(c)
+    }
+
+    private fun applyDemo(c: DemoConfig) {
+        links.setPrinters(emptyList())
+        if (c.on) {
+            _cameras.value = emptyMap()
+            camerasFor.clear()
+            links.setPrinters(Demo.printers(c))
+            links.setNetworkReady(true)
+        } else {
+            links.setPrinters(printers)
+            findCameras()
+        }
+    }
+
     private fun enterDashboard() {
         _phase.value = Phase.Dashboard
+        if (_demo.value.on) applyDemo(_demo.value)
         sessionJob?.cancel()
         sessionJob = scope.launch {
             launch { printersLoop() }
@@ -199,9 +227,11 @@ class TouchApp : Application() {
                 "Certaines marques n'ont pas répondu ; leurs imprimantes sont gardées telles quelles.")
         else ""
         printers = r.printers
-        links.setPrinters(printers)
+        if (!_demo.value.on) {
+            links.setPrinters(printers)
+            findCameras()
+        }
         links.setNetworkReady(true)
-        findCameras()
         return true
     }
 
@@ -213,6 +243,7 @@ class TouchApp : Application() {
         _cameras.value = _cameras.value.filterKeys { it in ids }
         for (p in todo) scope.launch {
             val url = Cameras.find(p, Net.lanHttp)
+            if (_demo.value.on) return@launch
             _cameras.value = if (url != null) _cameras.value + (p.id to url) else _cameras.value - p.id
         }
     }
@@ -235,7 +266,9 @@ class TouchApp : Application() {
     private suspend fun presenceLoop() {
         var full = true
         while (true) {
-            val entries = links.entries.value.filter { it.enabled }
+            val demoOn = _demo.value.on
+            // The account lists no made-up printer.
+            val entries = if (demoOn) emptyList() else links.entries.value.filter { it.enabled }
             val p = Presence(
                 mac = deviceId,
                 host = "tigertouch-${deviceId.takeLast(4)}",
@@ -244,7 +277,7 @@ class TouchApp : Application() {
                 ip = wifiIp(),
                 screenOff = false,
                 battery = true, // a tablet has one
-                demo = false,
+                demo = demoOn,
                 ids = entries.map { it.printer.id },
                 online = entries.map { it.view?.online == true },
                 full = full,

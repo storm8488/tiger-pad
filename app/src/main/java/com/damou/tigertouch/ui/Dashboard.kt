@@ -94,13 +94,15 @@ fun DashboardScreen(
     cameras: Map<String, String> = emptyMap(),
     /** The tablet's battery beside the clock (Settings: off for a tablet that never leaves its charger). */
     showBattery: Boolean = true,
+    /** Demo mode is on: a discreet banner says so. */
+    demo: Boolean = false,
 ) {
     var openId by remember { mutableStateOf<String?>(null) }
     var camId by remember { mutableStateOf<String?>(null) }
     val shown = entries.filter { it.enabled }
 
     Column(Modifier.fillMaxSize().background(Pal.bg)) {
-        Header(link, showBattery, onRefresh, onSettings)
+        Header(link, showBattery, demo, onRefresh, onSettings)
         if (accountError.isNotEmpty()) {
             Text(accountError, color = Pal.muted, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp))
         }
@@ -150,7 +152,7 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun Header(link: CloudLink, showBattery: Boolean, onRefresh: () -> Unit, onSettings: () -> Unit) {
+private fun Header(link: CloudLink, showBattery: Boolean, demo: Boolean, onRefresh: () -> Unit, onSettings: () -> Unit) {
     var now by remember { mutableStateOf(Date()) }
     LaunchedEffect(Unit) {
         while (true) { now = Date(); delay(1000) }
@@ -160,6 +162,7 @@ private fun Header(link: CloudLink, showBattery: Boolean, onRefresh: () -> Unit,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("Tiger Touch", color = Pal.accent, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        if (demo) DemoBadge(Modifier.padding(start = 16.dp))
         Spacer(Modifier.weight(1f))
         Text(SimpleDateFormat("HH:mm", Locale.getDefault()).format(now), color = Pal.text, fontSize = 24.sp)
         if (showBattery) {
@@ -430,4 +433,13 @@ private fun PrinterFull(e: PrinterEntry, onClose: () -> Unit, onControl: (PvCont
         Spacer(Modifier.weight(1f))
         JobButtons(v, onControl, size = 84.dp, onCamera = onCamera)
     }
+}
+
+/** Always on screen while demo mode is on: nothing shown is real. */
+@Composable
+fun DemoBadge(modifier: Modifier = Modifier) {
+    Text(
+        Tr.t("Demo", "Démo"), color = Pal.bg, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+        modifier = modifier.clip(RoundedCornerShape(50)).background(Color(0xFFF5B84A)).padding(horizontal = 12.dp, vertical = 3.dp),
+    )
 }

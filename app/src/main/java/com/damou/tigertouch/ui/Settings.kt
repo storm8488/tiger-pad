@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,6 +40,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.damou.tigertouch.BuildConfig
+import com.damou.tigertouch.demo.Demo
+import com.damou.tigertouch.demo.DemoConfig
 import com.damou.tigertouch.drivers.Tr
 import com.damou.tigertouch.links.PrinterEntry
 import com.damou.tigertouch.model.Brands
@@ -62,6 +65,9 @@ fun SettingsScreen(
     onKiosk: (KioskAction) -> Unit,
     showBattery: Boolean,
     onShowBattery: (Boolean) -> Unit,
+    demo: DemoConfig,
+    onDemo: (DemoConfig) -> Unit,
+    onIncident: () -> Unit,
 ) {
     var askPinFor by remember { mutableStateOf<KioskAction?>(null) }
     var settingPin by remember { mutableStateOf(false) }
@@ -111,6 +117,9 @@ fun SettingsScreen(
                     Switch(checked = showBattery, onCheckedChange = onShowBattery)
                 }
             }
+
+            item { Section(Tr.t("Demo", "Démo")) }
+            item { DemoCard(demo, onDemo, onIncident) }
 
             item { Section(Tr.t("Account", "Compte")) }
             item {
@@ -215,4 +224,51 @@ private fun PinDialog(title: String, onDismiss: () -> Unit, onPin: (String) -> B
         confirmButton = { Button(onClick = { wrong = !onPin(pin); if (wrong) pin = "" }) { Text("OK") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(Tr.t("Cancel", "Annuler")) } },
     )
+}
+
+/** Demo mode: made-up printers, for a showroom and for measuring a large fleet. */
+@Composable
+private fun DemoCard(demo: DemoConfig, onDemo: (DemoConfig) -> Unit, onIncident: () -> Unit) {
+    // The slider moves freely; the printers are made again only when it is let go.
+    var count by remember(demo.count) { mutableStateOf(demo.count.toFloat()) }
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Pal.card).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(Tr.t("Demo mode", "Mode démo"), color = Pal.text, fontSize = 18.sp)
+                Text(
+                    Tr.t("Made-up printers in place of the account's. No printer is reached while it is on.",
+                        "Des imprimantes fictives à la place de celles du compte. Aucune imprimante n'est contactée tant qu'il est actif."),
+                    color = Pal.muted, fontSize = 14.sp,
+                )
+            }
+            Switch(checked = demo.on, onCheckedChange = { onDemo(demo.copy(on = it)) })
+        }
+        if (demo.on) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(Tr.t("Printers: ", "Imprimantes : ") + count.toInt(), color = Pal.text, fontSize = 16.sp,
+                    modifier = Modifier.width(170.dp))
+                Slider(
+                    value = count, onValueChange = { count = it }, valueRange = 1f..Demo.MAX.toFloat(), steps = Demo.MAX - 2,
+                    onValueChangeFinished = { onDemo(demo.copy(count = count.toInt())) }, modifier = Modifier.weight(1f),
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(Tr.t("Every printer prints", "Toutes en impression"), color = Pal.text, fontSize = 16.sp)
+                    Text(
+                        Tr.t("Off: a mix of pauses, errors, finished plates, an offline printer and a spool running out.",
+                            "Désactivé : un mélange de pauses, d'erreurs, de plateaux terminés, d'une imprimante hors ligne et d'une bobine presque vide."),
+                        color = Pal.muted, fontSize = 14.sp,
+                    )
+                }
+                Switch(checked = demo.allPrinting, onCheckedChange = { onDemo(demo.copy(allPrinting = it)) })
+            }
+            OutlinedButton(onClick = onIncident) {
+                Text(Tr.t("Cause an incident (an error and a finished print)", "Provoquer un incident (une erreur et une fin d'impression)"))
+            }
+        }
+    }
 }

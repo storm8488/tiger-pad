@@ -33,6 +33,8 @@ data class AccountPrinter(
     val boardId: String = "",
     /** Reachable only through the maker's cloud. */
     val cloud: Boolean = false,
+    /** A made-up printer of the demo mode: never reached, whatever its brand. */
+    val demo: Boolean = false,
 )
 
 object Brands {

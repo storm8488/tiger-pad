@@ -40,6 +40,7 @@ class MainActivity : ComponentActivity() {
                 val entries by app.links.entries.collectAsStateWithLifecycle()
                 val accountError by app.accountError.collectAsStateWithLifecycle()
                 val cameras by app.cameras.collectAsStateWithLifecycle()
+                val demo by app.demo.collectAsStateWithLifecycle()
                 var settings by remember { mutableStateOf(false) }
                 var kiosk by remember { mutableStateOf(kioskInfo()) }
                 var showBattery by remember { mutableStateOf(uiPrefs.getBoolean("show_battery", true)) }
@@ -78,6 +79,9 @@ class MainActivity : ComponentActivity() {
                                 showBattery = on
                                 uiPrefs.edit().putBoolean("show_battery", on).apply()
                             },
+                            demo = demo,
+                            onDemo = app::setDemo,
+                            onIncident = { com.damou.tigertouch.demo.Demo.incident() },
                         )
                     } else {
                         DashboardScreen(
@@ -89,6 +93,7 @@ class MainActivity : ComponentActivity() {
                             onControl = app::control,
                             cameras = cameras,
                             showBattery = showBattery,
+                            demo = demo.on,
                         )
                     }
                 }
