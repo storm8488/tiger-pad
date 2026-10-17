@@ -20,7 +20,9 @@ import com.damou.tigertouch.kiosk.Kiosk
 import com.damou.tigertouch.ui.DashboardScreen
 import com.damou.tigertouch.fleet.SortBy
 import com.damou.tigertouch.ui.Density
+import com.damou.tigertouch.ui.NightPage
 import com.damou.tigertouch.ui.Screen
+import com.damou.tigertouch.ui.ScreenMode
 import com.damou.tigertouch.ui.rememberAlertView
 import com.damou.tigertouch.ui.rememberFleetView
 import com.damou.tigertouch.ui.KioskAction
@@ -90,7 +92,10 @@ class MainActivity : ComponentActivity() {
                     Phase.Starting -> StartingScreen()
                     is Phase.SignIn -> SignInScreen(p, onSignIn = app::signIn, onPair = app::startPairing)
                     is Phase.Pairing -> PairingScreen(p, onRetry = app::startPairing, onBack = app::backToSignIn)
-                    Phase.Dashboard -> if (settings) {
+                    // The night page in place of the others: nothing else is drawn under it.
+                    Phase.Dashboard -> if (app.night.mode == ScreenMode.NIGHT) {
+                        NightPage(fleet, events, app.night, demo.on)
+                    } else if (settings) {
                         androidx.compose.runtime.LaunchedEffect(Unit) {
                             while (true) { kiosk = kioskInfo(); delay(1000) }
                         }

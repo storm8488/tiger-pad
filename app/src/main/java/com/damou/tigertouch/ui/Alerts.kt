@@ -133,7 +133,7 @@ fun Bell(unacked: Int, onOpen: () -> Unit) {
     }
 }
 
-private fun kindColor(k: EventKind): Color = when (k) {
+internal fun kindColor(k: EventKind): Color = when (k) {
     EventKind.DONE -> Color(0xFF6AB0F0)
     EventKind.PAUSED -> Color(0xFFF5B84A)
     EventKind.ERROR, EventKind.OFFLINE -> Pal.danger
