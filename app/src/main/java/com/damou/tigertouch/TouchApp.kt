@@ -85,6 +85,10 @@ class TouchApp : Application() {
     lateinit var events: Events
         private set
 
+    /** The screen saver: dimming, the night page, the page's small moves. */
+    lateinit var night: com.damou.tigertouch.ui.Night
+        private set
+
     /** Which printers the home page shows, in which order: set by the screen. */
     val filter = MutableStateFlow(FleetFilter())
 
@@ -133,6 +137,7 @@ class TouchApp : Application() {
         page = combine(fleet, filter) { all, f -> page(all, f) }.flowOn(Dispatchers.Default)
             .stateIn(scope, SharingStarted.Eagerly, FleetPage())
         events = Events(this, scope)
+        night = com.damou.tigertouch.ui.Night(this)
         scope.launch(Dispatchers.Default) { fleet.collect { events.observe(it) } }
         scope.launch { start() }
     }

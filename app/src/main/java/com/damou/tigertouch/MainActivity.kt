@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -13,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.damou.tigertouch.kiosk.Kiosk
 import com.damou.tigertouch.ui.DashboardScreen
@@ -67,7 +69,14 @@ class MainActivity : ComponentActivity() {
                 val unacked by remember { derivedStateOf { events.value.count { !it.acked } } }
                 val alertPrefs by app.events.alertPrefs.collectAsStateWithLifecycle()
                 // An event wakes the screen up.
-                LaunchedEffect(Unit) { app.events.wake.collect { Screen.wake(this@MainActivity) } }
+                LaunchedEffect(Unit) {
+                    app.events.wake.collect { app.night.wake(); Screen.lightUp(this@MainActivity) }
+                }
+                // The screen saver looks at the clock and the idle time every few seconds: no frame unless it changes.
+                LaunchedEffect(Unit) { while (true) { app.night.tick(); delay(5000) } }
+                LaunchedEffect(Unit) {
+                    snapshotFlow { app.night.brightness() }.collect { Screen.brightness(this@MainActivity, it) }
+                }
                 var density by remember {
                     mutableStateOf(runCatching { Density.valueOf(uiPrefs.getString("density", "")!!) }.getOrDefault(Density.AUTO))
                 }
@@ -115,6 +124,9 @@ class MainActivity : ComponentActivity() {
                             alertPrefs = alertPrefs,
                             onAlertPrefs = app.events::setPrefs,
                             onTryBeep = { app.events.beep(it) },
+                            nightPrefs = app.night.prefs,
+                            onNightPrefs = app.night::change,
+                            onShowNight = app.night::showNight,
                         )
                     } else {
                         DashboardScreen(
@@ -150,6 +162,9 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    /** Every touch goes by the screen saver first: the one that wakes the screen goes no further. */
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean = app.night.onTouch(ev) || super.dispatchTouchEvent(ev)
 
     override fun onResume() {
         super.onResume()

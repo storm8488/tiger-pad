@@ -72,6 +72,9 @@ fun SettingsScreen(
     alertPrefs: AlertPrefs,
     onAlertPrefs: (AlertPrefs) -> Unit,
     onTryBeep: (Int) -> Unit,
+    nightPrefs: NightPrefs,
+    onNightPrefs: (NightPrefs) -> Unit,
+    onShowNight: () -> Unit,
 ) {
     var askPinFor by remember { mutableStateOf<KioskAction?>(null) }
     var settingPin by remember { mutableStateOf(false) }
@@ -121,6 +124,9 @@ fun SettingsScreen(
                     Switch(checked = showBattery, onCheckedChange = onShowBattery)
                 }
             }
+
+            item { Section(Tr.t("Night and screen saver", "Nuit et économiseur d'écran")) }
+            item { NightSettings(nightPrefs, onNightPrefs, onShowNight) }
 
             item { Section(Tr.t("Alerts", "Alertes")) }
             item { AlertSettings(alertPrefs, onAlertPrefs, onTryBeep) }
