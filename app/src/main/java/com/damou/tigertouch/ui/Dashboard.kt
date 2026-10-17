@@ -448,7 +448,8 @@ private fun UnitRow(u: UnitUi, compact: Boolean) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for (s in u.slots) {
                 val d = if (compact) 34.dp else 52.dp
-                val low = s.present && s.percent in 0 until PrinterUi.LOW_SPOOL
+                // The spool at work only: a holder that reports 0 % may just not know.
+                val low = s.present && s.selected && s.percent in 0 until PrinterUi.LOW_SPOOL
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
                         Modifier

@@ -178,7 +178,8 @@ private class CardInfo(private val p: PrinterUi, private val k: Pens, private va
         for (s in u.slots) {
             val center = Offset(x + r, y + r)
             drawCircle(if (s.present) rgb(s.color) else Pal.tile, r, center)
-            val low = s.present && s.percent in 0 until PrinterUi.LOW_SPOOL
+            // The spool at work only: a holder that reports 0 % may just not know.
+            val low = s.present && s.selected && s.percent in 0 until PrinterUi.LOW_SPOOL
             val (bw, bc) = when {
                 low -> k.px(3) to Pal.danger
                 s.selected -> k.px(3) to Pal.accent

@@ -39,7 +39,9 @@ android {
         release {
             // A release build: Android shows no "native libraries" warning for it (that one is for debuggable apps).
             signingConfig = signingConfigs.findByName("release")
-            isMinifyEnabled = false
+            // R8: smaller code and Compose optimised; the rules for the libraries are in proguard-rules.pro.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
