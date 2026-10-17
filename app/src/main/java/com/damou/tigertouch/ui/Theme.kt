@@ -64,17 +64,20 @@ fun stateColors(s: PvState, online: Boolean): Pair<Color, Color> {
     }
 }
 
-/** Time left: ui_fmt_left(). */
-fun fmtLeft(sec: Int): String = when {
-    sec <= 0 -> "--"
-    sec >= 3600 -> "%d h %02d min".format(sec / 3600, (sec % 3600) / 60)
-    else -> "%d min".format((sec + 59) / 60)
+/** Time left, from whole minutes: ui_fmt_left(). */
+fun fmtLeftMin(min: Int): String = when {
+    min <= 0 -> "--"
+    min >= 60 -> "%d h %02d".format(min / 60, min % 60)
+    else -> "%d min".format(min)
 }
 
-/** The local time at which the print will end, "--:--" when it is not known: ui_fmt_end(). */
-fun fmtEnd(leftS: Int): String {
-    if (leftS <= 0) return "--:--"
-    return SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(System.currentTimeMillis() + leftS * 1000L))
-}
+private val clockFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 
-fun fmtTemp(t: Float): String = if (t <= 0f) "--" else "%.0f°".format(t)
+/** A time of day from minutes since the epoch, "--:--" when unknown: ui_fmt_end(). */
+fun fmtClockMin(epochMin: Long): String =
+    if (epochMin <= 0) "--:--" else clockFormat.format(Date(epochMin * 60_000L))
+
+fun fmtClock(ms: Long): String = clockFormat.format(Date(ms))
+
+/** Whole degrees, "--" when unknown. */
+fun fmtTemp(t: Int): String = if (t <= 0) "--" else "$t°"

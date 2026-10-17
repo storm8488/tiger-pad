@@ -13,6 +13,8 @@ import com.damou.tigertouch.cloud.Presence
 import com.damou.tigertouch.demo.Demo
 import com.damou.tigertouch.demo.DemoConfig
 import com.damou.tigertouch.drivers.DriverEnv
+import com.damou.tigertouch.fleet.FleetMapper
+import com.damou.tigertouch.fleet.PrinterUi
 import com.damou.tigertouch.links.Links
 import com.damou.tigertouch.model.AccountPrinter
 import com.damou.tigertouch.model.PvControl
@@ -23,7 +25,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.security.SecureRandom
@@ -63,6 +69,12 @@ class TouchApp : Application() {
         private set
     lateinit var links: Links
         private set
+    /**
+     * The switched-on printers as the home page draws them, made off the main
+     * thread. A refresh that changes nothing on screen emits nothing.
+     */
+    lateinit var fleet: StateFlow<List<PrinterUi>>
+        private set
 
     private val _phase = MutableStateFlow<Phase>(Phase.Starting)
     val phase: StateFlow<Phase> = _phase
@@ -99,6 +111,9 @@ class TouchApp : Application() {
         links = Links(this, env)
         _demo.value = Demo.load(this)
         links.run(scope)
+        val mapper = FleetMapper()
+        fleet = links.entries.map { mapper.map(it) }.flowOn(Dispatchers.Default)
+            .stateIn(scope, SharingStarted.Eagerly, emptyList())
         scope.launch { start() }
     }
 

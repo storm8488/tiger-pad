@@ -7,6 +7,7 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -14,6 +15,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.damou.tigertouch.kiosk.Kiosk
 import com.damou.tigertouch.ui.DashboardScreen
+import com.damou.tigertouch.ui.Density
+import com.damou.tigertouch.ui.rememberFleetView
 import com.damou.tigertouch.ui.KioskAction
 import com.damou.tigertouch.ui.KioskInfo
 import com.damou.tigertouch.ui.PairingScreen
@@ -37,10 +40,21 @@ class MainActivity : ComponentActivity() {
         setContent {
             TouchTheme {
                 val phase by app.phase.collectAsStateWithLifecycle()
-                val entries by app.links.entries.collectAsStateWithLifecycle()
+                // Read whole only by the settings page: it changes at every refresh.
+                val entries = app.links.entries.collectAsStateWithLifecycle()
+                val accountHasPrinters by remember { derivedStateOf { entries.value.isNotEmpty() } }
+                // The account link is a plain property: looked at every 2 s, a change recomposes the header.
+                var link by remember { mutableStateOf(app.cloud.link) }
+                androidx.compose.runtime.LaunchedEffect(Unit) {
+                    while (true) { link = app.cloud.link; delay(2000) }
+                }
                 val accountError by app.accountError.collectAsStateWithLifecycle()
                 val cameras by app.cameras.collectAsStateWithLifecycle()
                 val demo by app.demo.collectAsStateWithLifecycle()
+                val fleet = rememberFleetView(app.fleet)
+                var density by remember {
+                    mutableStateOf(runCatching { Density.valueOf(uiPrefs.getString("density", "")!!) }.getOrDefault(Density.AUTO))
+                }
                 var settings by remember { mutableStateOf(false) }
                 var kiosk by remember { mutableStateOf(kioskInfo()) }
                 var showBattery by remember { mutableStateOf(uiPrefs.getBoolean("show_battery", true)) }
@@ -57,7 +71,7 @@ class MainActivity : ComponentActivity() {
                         }
                         SettingsScreen(
                             email = app.cloud.email,
-                            entries = entries,
+                            entries = entries.value,
                             kiosk = kiosk,
                             onBack = { settings = false },
                             onToggle = { id, on -> app.links.setEnabled(id, on) },
@@ -85,8 +99,9 @@ class MainActivity : ComponentActivity() {
                         )
                     } else {
                         DashboardScreen(
-                            entries = entries,
-                            link = app.cloud.link,
+                            fleet = fleet,
+                            accountHasPrinters = accountHasPrinters,
+                            link = link,
                             accountError = accountError,
                             onRefresh = app::refreshPrinters,
                             onSettings = { settings = true },
@@ -94,6 +109,11 @@ class MainActivity : ComponentActivity() {
                             cameras = cameras,
                             showBattery = showBattery,
                             demo = demo.on,
+                            density = density,
+                            onDensity = { d ->
+                                density = d
+                                uiPrefs.edit().putString("density", d.name).apply()
+                            },
                         )
                     }
                 }

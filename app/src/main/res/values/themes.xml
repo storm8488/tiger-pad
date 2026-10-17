@@ -2,7 +2,8 @@
 <resources>
     <!-- No action bar, no title: Compose draws everything. Dark, as the Panda Touch. -->
     <style name="Theme.TigerTouch" parent="android:Theme.Material.NoActionBar.Fullscreen">
-        <item name="android:windowBackground">@android:color/black</item>
+        <!-- Pal.bg: the home page draws no ground of its own, one full-screen fill less per frame. -->
+        <item name="android:windowBackground">@color/bg</item>
         <item name="android:statusBarColor">@android:color/black</item>
         <item name="android:navigationBarColor">@android:color/black</item>
     </style>

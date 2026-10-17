@@ -31,12 +31,12 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,14 +44,21 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.material3.ripple
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -64,32 +71,57 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.damou.tigertouch.cloud.CloudLink
 import com.damou.tigertouch.drivers.Tr
-import com.damou.tigertouch.links.PrinterEntry
+import com.damou.tigertouch.fleet.JobUi
+import com.damou.tigertouch.fleet.PrinterUi
+import com.damou.tigertouch.fleet.TempUi
+import com.damou.tigertouch.fleet.UnitUi
 import com.damou.tigertouch.model.Brands
-import com.damou.tigertouch.model.PV_LABEL_EXT
-import com.damou.tigertouch.model.PV_LABEL_HT
-import com.damou.tigertouch.model.PrinterView
 import com.damou.tigertouch.model.PvControl
 import com.damou.tigertouch.model.PvState
-import com.damou.tigertouch.model.PvUnit
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+
+/** How many printers the home page shows at once. */
+enum class Density {
+    /** The largest of the others that shows the whole fleet without scrolling. */
+    AUTO,
+    /** Tiles readable from across the room: 15 on one screen. */
+    WALL,
+    /** Large cards with the temperatures, the spools and the buttons. */
+    CARDS,
+    /** One row per printer, with its buttons: the firmware's list. */
+    LIST;
+
+    fun label(): String = when (this) {
+        AUTO -> "Auto"
+        WALL -> Tr.t("Wall", "Mur")
+        CARDS -> Tr.t("Cards", "Cartes")
+        LIST -> Tr.t("List", "Liste")
+    }
+}
+
+private const val CARD_MIN_W = 380
+/** About what a card with one box of spools takes. */
+private const val CARD_H = 400
+private const val GAP = 12
 
 /**
  * The printers page. Where the Panda Touch scrolls one card at a time on its
- * 5" panel, the tablet lays every switched-on printer out in a grid, all live.
+ * 5" panel, the tablet shows the whole fleet: a wall of tiles readable from
+ * across the room, large cards, or a list.
  */
 @Composable
 fun DashboardScreen(
-    entries: List<PrinterEntry>,
+    fleet: FleetView,
+    /** The account has printers, even if every one is switched off. */
+    accountHasPrinters: Boolean,
     link: CloudLink,
     accountError: String,
     onRefresh: () -> Unit,
     onSettings: () -> Unit,
     onControl: (String, PvControl) -> Unit,
+    density: Density,
+    onDensity: (Density) -> Unit,
     /** MJPEG stream URL by printer id, for the printers that have a camera. */
     cameras: Map<String, String> = emptyMap(),
     /** The tablet's battery beside the clock (Settings: off for a tablet that never leaves its charger). */
@@ -99,17 +131,20 @@ fun DashboardScreen(
 ) {
     var openId by remember { mutableStateOf<String?>(null) }
     var camId by remember { mutableStateOf<String?>(null) }
-    val shown = entries.filter { it.enabled }
+    // The order of the printers: this screen recomposes when it changes, not at every refresh.
+    val ids = fleet.ids
+    var area by remember { mutableStateOf(IntSize.Zero) }
 
-    Column(Modifier.fillMaxSize().background(Pal.bg)) {
-        Header(link, showBattery, demo, onRefresh, onSettings)
+    // No background: the window's is Pal.bg (themes.xml).
+    Column(Modifier.fillMaxSize()) {
+        Header(link, showBattery, demo, density, onDensity, onRefresh, onSettings)
         if (accountError.isNotEmpty()) {
             Text(accountError, color = Pal.muted, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 20.dp))
         }
-        if (shown.isEmpty()) {
+        if (ids.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    if (entries.isEmpty()) Tr.t(
+                    if (!accountHasPrinters) Tr.t(
                         "No printer in the account yet. Add them in Tiger Studio Manager.",
                         "Aucune imprimante dans le compte. Ajoutez-les dans Tiger Studio Manager.",
                     ) else Tr.t("Every printer is switched off (Settings).", "Toutes les imprimantes sont désactivées (Réglages)."),
@@ -117,172 +152,231 @@ fun DashboardScreen(
                 )
             }
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 380.dp),
-                contentPadding = PaddingValues(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                items(shown, key = { it.printer.id }) { e ->
-                    PrinterCard(
-                        e, onOpen = { openId = e.printer.id }, onControl = { onControl(e.printer.id, it) },
-                        onCamera = cameras[e.printer.id]?.let { { camId = e.printer.id } },
-                    )
+            // The size of the page, read once: no subcomposition at every refresh.
+            val dens = LocalDensity.current
+            Box(Modifier.fillMaxSize().onSizeChanged { area = it }) {
+                if (area != IntSize.Zero) {
+                    val w = with(dens) { area.width.toDp().value.toInt() }
+                    val h = with(dens) { area.height.toDp().value.toInt() }
+                    val shown = if (density == Density.AUTO) autoDensity(ids.size, w, h) else density
+                    val onOpen: (String) -> Unit = { openId = it }
+                    when (shown) {
+                        Density.WALL -> Wall(fleet, ids, w, h, onOpen)
+                        Density.LIST -> FleetList(fleet, ids, onOpen, onControl)
+                        else -> Cards(fleet, ids, onOpen, onControl, cameras) { camId = it }
+                    }
                 }
             }
         }
     }
 
-    val open = shown.firstOrNull { it.printer.id == openId }
+    val open = openId?.let { fleet.printer(it) }
     if (open != null) {
         Dialog(onDismissRequest = { openId = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             PrinterFull(
-                open, onClose = { openId = null }, onControl = { onControl(open.printer.id, it) },
-                onCamera = cameras[open.printer.id]?.let { { camId = open.printer.id } },
+                open, demo, onClose = { openId = null }, onControl = { onControl(open.id, it) },
+                onCamera = cameras[open.id]?.let { { camId = open.id } },
             )
         }
     }
 
     val cam = camId?.let { id -> cameras[id]?.let { url -> id to url } }
     if (cam != null) {
-        val name = entries.firstOrNull { it.printer.id == cam.first }?.printer?.name ?: ""
+        val name = fleet.get(cam.first)?.name ?: ""
         CameraDialog(title = name, url = cam.second, onClose = { camId = null })
     }
 }
 
+/** Cards when they all fit on the screen, the wall otherwise. */
+private fun autoDensity(n: Int, w: Int, h: Int): Density {
+    val cols = ((w - 2 * 16 + GAP) / (CARD_MIN_W + GAP)).coerceAtLeast(1)
+    val rows = ((h - 2 * 16 + GAP) / (CARD_H + GAP)).coerceAtLeast(1)
+    return if (n <= cols * rows) Density.CARDS else Density.WALL
+}
+
 @Composable
-private fun Header(link: CloudLink, showBattery: Boolean, demo: Boolean, onRefresh: () -> Unit, onSettings: () -> Unit) {
-    var now by remember { mutableStateOf(Date()) }
-    LaunchedEffect(Unit) {
-        while (true) { now = Date(); delay(1000) }
-    }
+private fun Header(
+    link: CloudLink, showBattery: Boolean, demo: Boolean, density: Density, onDensity: (Density) -> Unit,
+    onRefresh: () -> Unit, onSettings: () -> Unit,
+) {
     Row(
-        Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 20.dp),
+        Modifier.fillMaxWidth().height(64.dp).padding(start = 20.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("Tiger Touch", color = Pal.accent, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-        if (demo) DemoBadge(Modifier.padding(start = 16.dp))
+        if (demo) DemoBadge(Modifier.padding(start = 12.dp))
+        Spacer(Modifier.width(24.dp))
+        DensitySwitch(density, onDensity)
         Spacer(Modifier.weight(1f))
-        Text(SimpleDateFormat("HH:mm", Locale.getDefault()).format(now), color = Pal.text, fontSize = 24.sp)
+        Clock()
         if (showBattery) {
             Spacer(Modifier.width(16.dp))
             BatteryIndicator()
         }
-        Spacer(Modifier.width(20.dp))
+        Spacer(Modifier.width(16.dp))
         val (icon, tint) = when (link) {
             CloudLink.OK -> Icons.Filled.Cloud to Pal.ok
             CloudLink.CONNECTING -> Icons.Filled.CloudSync to Pal.muted
             CloudLink.NONE -> Icons.Filled.CloudOff to Pal.danger
         }
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(28.dp))
-        IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, Tr.t("Refresh", "Actualiser"), tint = Pal.text) }
-        IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, Tr.t("Settings", "Réglages"), tint = Pal.text) }
+        IconButton(onClick = onRefresh, Modifier.size(56.dp)) { Icon(Icons.Filled.Refresh, Tr.t("Refresh", "Actualiser"), tint = Pal.text) }
+        IconButton(onClick = onSettings, Modifier.size(56.dp)) { Icon(Icons.Filled.Settings, Tr.t("Settings", "Réglages"), tint = Pal.text) }
     }
 }
 
-/** One printer: the firmware's card (ui/ui_cards.c), larger. */
+/** The time of day: the only part of the header that changes on its own, so the only part redrawn. */
 @Composable
-private fun PrinterCard(e: PrinterEntry, onOpen: () -> Unit, onControl: (PvControl) -> Unit, onCamera: (() -> Unit)?) {
-    val v = e.view ?: PrinterView(name = e.printer.name, brand = e.printer.brand)
-    Column(
-        Modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(Pal.card)
-            .clickable(onClick = onOpen)
-            .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        TitleRow(v, e.printer.cloud)
-        if (v.notice.isNotEmpty()) {
-            Text(v.notice, color = if (v.noticeError) Pal.danger else Pal.muted, fontSize = 14.sp, maxLines = 2,
-                overflow = TextOverflow.Ellipsis)
+private fun Clock() {
+    var now by remember { mutableStateOf(fmtClock(System.currentTimeMillis())) }
+    LaunchedEffect(Unit) {
+        while (true) { now = fmtClock(System.currentTimeMillis()); delay(1000) }
+    }
+    Text(now, color = Pal.text, fontSize = 24.sp)
+}
+
+@Composable
+private fun DensitySwitch(density: Density, onDensity: (Density) -> Unit) {
+    Row(Modifier.background(Pal.card, RoundedCornerShape(12.dp))) {
+        for (d in Density.entries) {
+            val on = d == density
+            Box(
+                Modifier
+                    .height(44.dp)
+                    .background(if (on) Pal.tile else Color.Transparent, RoundedCornerShape(12.dp))
+                    .clickable { onDensity(d) }
+                    .padding(horizontal = 16.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(d.label(), color = if (on) Pal.accent else Pal.muted, fontSize = 16.sp,
+                    fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal)
+            }
         }
-        JobBlock(v)
-        TempRow(v, tileHeight = 64.dp)
-        Units(v, compact = true)
-        JobButtons(v, onControl, size = 56.dp, onCamera = onCamera)
+    }
+}
+
+/** Always on screen while demo mode is on: nothing shown is real. */
+@Composable
+fun DemoBadge(modifier: Modifier = Modifier) {
+    Text(
+        Tr.t("Demo", "Démo"), color = Pal.bg, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+        modifier = modifier.background(Color(0xFFF5B84A), RoundedCornerShape(50)).padding(horizontal = 12.dp, vertical = 3.dp),
+    )
+}
+
+// ---- Cards ----------------------------------------------------------------------
+
+@Composable
+private fun Cards(
+    fleet: FleetView, ids: List<String>, onOpen: (String) -> Unit, onControl: (String, PvControl) -> Unit,
+    cameras: Map<String, String>, onCamera: (String) -> Unit,
+) {
+    val d = LocalDensity.current
+    val pens = remember(d) { Pens(d) }
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = CARD_MIN_W.dp),
+        contentPadding = PaddingValues(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(GAP.dp),
+        verticalArrangement = Arrangement.spacedBy(GAP.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        items(ids, key = { it }) { id ->
+            PrinterCard(fleet, id, pens, hasCamera = id in cameras, onOpen, onControl, onCamera)
+        }
     }
 }
 
 @Composable
-private fun TitleRow(v: PrinterView, cloud: Boolean) {
+private fun TitleRow(p: PrinterUi) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(v.name, color = Pal.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+            Text(p.name, color = Pal.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
                 overflow = TextOverflow.Ellipsis)
-            Text(Brands.label(v.brand) + if (cloud) " · Cloud" else " · LAN", color = Pal.muted, fontSize = 14.sp)
+            Text(Brands.label(p.brand) + if (p.cloud) " · Cloud" else " · LAN", color = Pal.muted, fontSize = 14.sp)
         }
-        val (bg, fg) = stateColors(v.state, v.online)
-        Text(
-            if (v.online) stateText(v.state) else Tr.t("Offline", "Hors ligne"),
-            color = fg, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.clip(RoundedCornerShape(50)).background(bg).padding(horizontal = 14.dp, vertical = 6.dp),
-        )
+        StatePill(p, 15)
     }
 }
 
+/** The printer's state in its colour; grey and "Offline" when it does not answer. */
 @Composable
-private fun JobBlock(v: PrinterView) {
-    val active = v.jobActive || v.state == PvState.DONE
-    Column(Modifier.alpha(if (active) 1f else 0.45f)) {
+fun StatePill(p: PrinterUi, size: Int) {
+    val (bg, fg) = stateColors(p.state, p.online)
+    Text(
+        stateWord(p), color = fg, fontSize = size.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+        modifier = Modifier.background(bg, RoundedCornerShape(50)).padding(horizontal = 14.dp, vertical = 6.dp),
+    )
+}
+
+fun stateWord(p: PrinterUi): String = when {
+    p.connecting -> Tr.t("Connecting", "Connexion")
+    !p.online -> Tr.t("Offline", "Hors ligne")
+    else -> stateText(p.state)
+}
+
+/** A plain filled bar: Material 3's indicator draws a gap and an end dot that read as noise here. */
+@Composable
+fun ProgressBar(p: PrinterUi, height: Dp, modifier: Modifier = Modifier) {
+    val fg = stateColors(p.state, p.online).second
+    val f = p.progress / 100f
+    // Drawn, not clipped: a clip is a layer of its own on this GPU.
+    Box(modifier.fillMaxWidth().height(height).drawBehind {
+        val r = androidx.compose.ui.geometry.CornerRadius(this.size.height / 2)
+        drawRoundRect(Pal.tile, cornerRadius = r)
+        if (f > 0f) drawRoundRect(fg, size = this.size.copy(width = (this.size.width * f).coerceAtLeast(this.size.height)), cornerRadius = r)
+    })
+}
+
+@Composable
+private fun JobBlock(p: PrinterUi) {
+    val active = p.jobActive || p.state == PvState.DONE
+    Column(Modifier.dim(if (active) 1f else 0.45f)) {
         Row(verticalAlignment = Alignment.Bottom) {
-            Text("${v.progress} %", color = Pal.text, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+            Text("${p.progress} %", color = Pal.text, fontSize = 34.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(12.dp))
-            Text(v.file.ifEmpty { "--" }, color = Pal.muted, fontSize = 15.sp, maxLines = 1,
+            Text(p.file.ifEmpty { "--" }, color = Pal.muted, fontSize = 15.sp, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(bottom = 6.dp))
         }
-        // A plain filled bar: Material 3's indicator draws a gap and an end dot that read as noise here.
-        Box(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp)).background(Pal.tile)) {
-            Box(
-                Modifier.fillMaxWidth(v.progress.coerceIn(0, 100) / 100f).fillMaxHeight()
-                    .background(stateColors(v.state, v.online).second),
-            )
-        }
+        ProgressBar(p, 10.dp)
         Spacer(Modifier.height(6.dp))
         Row {
-            Text(Tr.t("Left ", "Reste ") + fmtLeft(v.leftS), color = Pal.text, fontSize = 15.sp)
+            Text(Tr.t("Left ", "Reste ") + fmtLeftMin(p.leftMin), color = Pal.text, fontSize = 15.sp)
             Spacer(Modifier.weight(1f))
-            if (v.totalLayer > 0) Text("${v.layer} / ${v.totalLayer}", color = Pal.muted, fontSize = 15.sp)
+            if (p.totalLayer > 0) Text("${p.layer} / ${p.totalLayer}", color = Pal.muted, fontSize = 15.sp)
             Spacer(Modifier.weight(1f))
-            Text(Tr.t("End ", "Fin ") + fmtEnd(v.leftS), color = Pal.text, fontSize = 15.sp)
+            Text(Tr.t("End ", "Fin ") + fmtClockMin(p.endMin), color = Pal.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
 
 /** Nozzle(s), bed, chamber: the temperature tiles (ui/ui_tile.c). */
 @Composable
-private fun TempRow(v: PrinterView, tileHeight: Dp) {
+private fun TempRow(p: PrinterUi, tileHeight: Dp) {
+    // Four nozzles leave no room for long words: "N1", "B1"... and no chamber tile when there is no reading.
+    val many = p.nozzles.size >= 3
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (v.nozzleCount >= 2) {
-            for (i in 0 until v.nozzleCount.coerceAtMost(v.nozzles.size)) {
-                val n = v.nozzles[i]
-                TempTile(n.label.ifEmpty { Tr.t("Nozzle ${i + 1}", "Buse ${i + 1}") }, n.temp, n.target,
-                    highlight = i == v.nozzleActive, height = tileHeight, modifier = Modifier.weight(1f))
-            }
-        } else {
-            TempTile(Tr.t("Nozzle", "Buse"), v.nozzle, v.nozzleTarget, false, tileHeight, Modifier.weight(1f))
+        p.nozzles.forEachIndexed { i, n ->
+            TempTile(if (many) n.copy(label = Tr.t("N", "B") + (i + 1)) else n, tileHeight, Modifier.weight(1f))
         }
-        TempTile(Tr.t("Bed", "Plateau"), v.bed, v.bedTarget, false, tileHeight, Modifier.weight(1f))
-        TempTile(Tr.t("Chamber", "Caisson"), v.chamber, 0f, false, tileHeight, Modifier.weight(1f))
+        TempTile(p.bed, tileHeight, Modifier.weight(1f))
+        if (p.chamber.temp > 0 || !many) TempTile(p.chamber, tileHeight, Modifier.weight(1f))
     }
 }
 
 @Composable
-private fun TempTile(label: String, t: Float, target: Float, highlight: Boolean, height: Dp, modifier: Modifier) {
+private fun TempTile(t: TempUi, height: Dp, modifier: Modifier) {
     Column(
         modifier
             .height(height)
-            .clip(RoundedCornerShape(12.dp))
-            .background(Pal.tile)
-            .then(if (highlight) Modifier.border(2.dp, Pal.accent, RoundedCornerShape(12.dp)) else Modifier)
+            .background(Pal.tile, RoundedCornerShape(12.dp))
+            .then(if (t.active) Modifier.border(2.dp, Pal.accent, RoundedCornerShape(12.dp)) else Modifier)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.Center,
     ) {
-        Text(label, color = Pal.muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(t.label, color = Pal.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Row(verticalAlignment = Alignment.Bottom) {
-            Text(fmtTemp(t), color = Pal.text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-            if (target > 0f) Text(" / " + fmtTemp(target), color = Pal.muted, fontSize = 13.sp,
+            Text(fmtTemp(t.temp), color = Pal.text, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            if (t.target > 0) Text(" / " + fmtTemp(t.target), color = Pal.muted, fontSize = 13.sp, maxLines = 1,
                 modifier = Modifier.padding(bottom = 2.dp))
         }
     }
@@ -290,11 +384,10 @@ private fun TempTile(label: String, t: Float, target: Float, highlight: Boolean,
 
 /** The filament units: boxes first, then the external spool and the AMS HT on one row. */
 @Composable
-private fun Units(v: PrinterView, compact: Boolean) {
-    val units = v.unit.filter { it.present && it.slots > 0 }
+private fun Units(units: List<UnitUi>, compact: Boolean) {
     if (units.isEmpty()) return
-    val boxes = units.filter { it.label != PV_LABEL_EXT && !it.label.startsWith(PV_LABEL_HT) }
-    val singles = units - boxes.toSet()
+    val boxes = units.filter { !it.single }
+    val singles = units.filter { it.single }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         boxes.forEach { UnitRow(it, compact) }
         if (singles.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -304,27 +397,30 @@ private fun Units(v: PrinterView, compact: Boolean) {
 }
 
 @Composable
-private fun UnitRow(u: PvUnit, compact: Boolean) {
+private fun UnitRow(u: UnitUi, compact: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(u.label, color = Pal.muted, fontSize = 13.sp, modifier = Modifier.width(if (compact) 58.dp else 72.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (i in 0 until u.slots.coerceIn(0, 4)) {
-                val s = u.slot[i]
+            for (s in u.slots) {
                 val d = if (compact) 34.dp else 52.dp
+                val low = s.present && s.percent in 0 until PrinterUi.LOW_SPOOL
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(
                         Modifier
                             .size(d)
-                            .clip(CircleShape)
-                            .background(if (s.present) rgb(s.color) else Pal.tile)
-                            .border(if (s.selected) 3.dp else 1.dp, if (s.selected) Pal.accent else Color(0x33FFFFFF), CircleShape),
+                            .background(if (s.present) rgb(s.color) else Pal.tile, CircleShape)
+                            .border(
+                                if (s.selected || low) 3.dp else 1.dp,
+                                when { low -> Pal.danger; s.selected -> Pal.accent; else -> Color(0x33FFFFFF) },
+                                CircleShape,
+                            ),
                         contentAlignment = Alignment.Center,
                     ) {
                         if (!compact && s.present && s.percent >= 0) {
-                            Text("${s.percent}%", fontSize = 11.sp, color = readableOn(s.color))
+                            Text("${s.percent}%", fontSize = 13.sp, color = readableOn(s.color))
                         }
                     }
-                    if (!compact) Text(s.material.ifEmpty { "--" }, color = Pal.muted, fontSize = 12.sp)
+                    if (!compact) Text(s.material.ifEmpty { "--" }, color = Pal.muted, fontSize = 13.sp)
                 }
             }
         }
@@ -341,25 +437,25 @@ private fun readableOn(c: Int): Color {
  * dimmed and inert when they cannot act. Stop is a hold of 1.5 s, pause a touch.
  */
 @Composable
-private fun JobButtons(v: PrinterView, onControl: (PvControl) -> Unit, size: Dp, onCamera: (() -> Unit)? = null) {
-    val canJob = v.online && v.canControl && v.jobActive
-    val canLight = v.online && v.canLight
+fun JobButtons(j: JobUi, onControl: (PvControl) -> Unit, size: Dp, onCamera: (() -> Unit)? = null, spread: Boolean = true) {
+    val canJob = j.canJob
+    val canLight = j.canLight
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        val paused = v.state == PvState.PAUSED
+        val paused = j.paused
         RoundButton(
             if (paused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
             if (paused) Tr.t("Resume", "Reprendre") else Tr.t("Pause", "Pause"),
             enabled = canJob, size = size,
         ) { onControl(if (paused) PvControl.RESUME else PvControl.PAUSE) }
         HoldToStop(enabled = canJob, size = size) { onControl(PvControl.STOP) }
-        Spacer(Modifier.weight(1f))
+        if (spread) Spacer(Modifier.weight(1f))
         // Only drawn when the printer has a camera this app can show.
         if (onCamera != null) RoundButton(Icons.Filled.Videocam, Tr.t("Camera", "Caméra"), enabled = true, size = size, onClick = onCamera)
         RoundButton(
-            if (v.lightOn) Icons.Filled.Lightbulb else Icons.Outlined.Lightbulb,
+            if (j.lightOn) Icons.Filled.Lightbulb else Icons.Outlined.Lightbulb,
             Tr.t("Light", "Lumière"), enabled = canLight, size = size,
-            tint = if (v.lightOn) Color(0xFFF5D04A) else Pal.text,
-        ) { onControl(if (v.lightOn) PvControl.LIGHT_OFF else PvControl.LIGHT_ON) }
+            tint = if (j.lightOn) Color(0xFFF5D04A) else Pal.text,
+        ) { onControl(if (j.lightOn) PvControl.LIGHT_OFF else PvControl.LIGHT_ON) }
     }
 }
 
@@ -370,10 +466,13 @@ private fun RoundButton(
     Box(
         Modifier
             .size(size)
-            .clip(CircleShape)
-            .background(Pal.tile)
-            .alpha(if (enabled) 1f else 0.35f)
-            .clickable(enabled = enabled, onClick = onClick),
+            .background(Pal.tile, CircleShape)
+            .dim(if (enabled) 1f else 0.35f)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(bounded = false, radius = size / 2),
+                enabled = enabled, onClick = onClick,
+            ),
         contentAlignment = Alignment.Center,
     ) { Icon(icon, label, tint = tint, modifier = Modifier.size(size * 0.5f)) }
 }
@@ -386,9 +485,8 @@ private fun HoldToStop(enabled: Boolean, size: Dp, onStop: () -> Unit) {
     Box(
         Modifier
             .size(size)
-            .clip(CircleShape)
-            .background(Pal.tile)
-            .alpha(if (enabled) 1f else 0.35f)
+            .background(Pal.tile, CircleShape)
+            .dim(if (enabled) 1f else 0.35f)
             .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
                 detectTapGestures(onPress = {
@@ -404,42 +502,44 @@ private fun HoldToStop(enabled: Boolean, size: Dp, onStop: () -> Unit) {
             },
         contentAlignment = Alignment.Center,
     ) {
-        Box(Modifier.fillMaxSize().padding(0.dp)) {
-            Box(Modifier.fillMaxWidth().fillMaxHeight(fill.value).align(Alignment.BottomCenter).background(Pal.danger))
-        }
+        // Read while drawing: the hold redraws this button, it does not recompose the card.
+        Box(Modifier.fillMaxSize().drawBehind {
+            val f = fill.value
+            // A disc that grows to the edge: no clip needed.
+            if (f > 0f) drawCircle(Pal.danger, radius = this.size.minDimension / 2 * f)
+        })
         Icon(Icons.Filled.Stop, Tr.t("Stop (hold)", "Arrêt (maintenir)"), tint = Pal.text, modifier = Modifier.size(size * 0.5f))
     }
 }
 
 /** The full view of one printer: bigger tiles, the spools with their material and what is left. */
 @Composable
-private fun PrinterFull(e: PrinterEntry, onClose: () -> Unit, onControl: (PvControl) -> Unit, onCamera: (() -> Unit)?) {
-    val v = e.view ?: PrinterView(name = e.printer.name, brand = e.printer.brand)
+private fun PrinterFull(p: PrinterUi, demo: Boolean, onClose: () -> Unit, onControl: (PvControl) -> Unit, onCamera: (() -> Unit)?) {
     Column(
         Modifier.fillMaxSize().background(Pal.bg).padding(28.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) { TitleRow(v, e.printer.cloud) }
+            Box(Modifier.weight(1f)) { TitleRow(p) }
+            if (demo) DemoBadge(Modifier.padding(start = 12.dp))
             Spacer(Modifier.width(12.dp))
-            IconButton(onClick = onClose) { Icon(Icons.Filled.Close, Tr.t("Close", "Fermer"), tint = Pal.text) }
+            IconButton(onClick = onClose, Modifier.size(56.dp)) { Icon(Icons.Filled.Close, Tr.t("Close", "Fermer"), tint = Pal.text) }
         }
-        if (v.notice.isNotEmpty()) {
-            Text(v.notice, color = if (v.noticeError) Pal.danger else Pal.muted, fontSize = 18.sp)
+        if (p.notice.isNotEmpty()) {
+            Text(p.notice, color = if (p.noticeError) Pal.danger else Pal.muted, fontSize = 18.sp)
         }
-        JobBlock(v)
-        TempRow(v, tileHeight = 96.dp)
-        Units(v, compact = false)
+        JobBlock(p)
+        TempRow(p, tileHeight = 96.dp)
+        Units(p.units, compact = false)
         Spacer(Modifier.weight(1f))
-        JobButtons(v, onControl, size = 84.dp, onCamera = onCamera)
+        JobButtons(p.job, onControl, size = 84.dp, onCamera = onCamera)
     }
 }
 
-/** Always on screen while demo mode is on: nothing shown is real. */
-@Composable
-fun DemoBadge(modifier: Modifier = Modifier) {
-    Text(
-        Tr.t("Demo", "Démo"), color = Pal.bg, fontSize = 14.sp, fontWeight = FontWeight.Bold,
-        modifier = modifier.clip(RoundedCornerShape(50)).background(Color(0xFFF5B84A)).padding(horizontal = 12.dp, vertical = 3.dp),
-    )
-}
+/**
+ * Fades what it wraps without an offscreen buffer: the alpha goes to each
+ * drawing, which costs nothing, where Modifier.alpha() draws into a layer of its
+ * own first.
+ */
+fun Modifier.dim(alpha: Float): Modifier =
+    if (alpha >= 1f) this else graphicsLayer { this.alpha = alpha; compositingStrategy = CompositingStrategy.ModulateAlpha }
