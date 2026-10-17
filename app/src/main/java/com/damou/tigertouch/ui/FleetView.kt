@@ -52,3 +52,17 @@ fun rememberFleetView(flow: StateFlow<List<PrinterUi>>): FleetView {
 /** Kept for the screens' calls: the printer, read as its own state. */
 @Composable
 fun FleetView.printer(id: String): PrinterUi? = get(id)
+
+/**
+ * The order to show: [ids], except while a finger scrolls. A list that
+ * reorders under the finger loses what was being read, and costs a layout of
+ * every row on the frame; the new order comes when the scroll stops.
+ */
+@Composable
+fun heldWhileScrolling(ids: List<String>, scrolling: Boolean): List<String> {
+    val shown = remember { mutableStateOf(ids) }
+    LaunchedEffect(ids, scrolling) { if (!scrolling) shown.value = ids }
+    // A printer that comes or goes is shown at once, scroll or not.
+    val held = shown.value
+    return if (held.size != ids.size || !held.containsAll(ids)) ids else held
+}

@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -318,14 +319,17 @@ private fun Cards(
 ) {
     val d = LocalDensity.current
     val pens = remember(d) { Pens(d) }
+    val state = rememberLazyGridState()
+    val shown = heldWhileScrolling(ids, state.isScrollInProgress)
     LazyVerticalGrid(
+        state = state,
         columns = GridCells.Adaptive(minSize = CARD_MIN_W.dp),
         contentPadding = PaddingValues(16.dp),
         horizontalArrangement = Arrangement.spacedBy(GAP.dp),
         verticalArrangement = Arrangement.spacedBy(GAP.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        items(ids, key = { it }) { id ->
+        items(shown, key = { it }) { id ->
             PrinterCard(fleet, id, pens, alerts, hasCamera = id in cameras, onOpen, onControl, onCamera)
         }
     }

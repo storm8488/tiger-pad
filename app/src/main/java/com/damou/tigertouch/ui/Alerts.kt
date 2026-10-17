@@ -98,10 +98,12 @@ private fun alertColor(p: com.damou.tigertouch.fleet.PrinterUi?): Color = when {
 /**
  * A blinking border around a printer with an event to acknowledge. Put it
  * outside the printer's own texture: blinking redraws this light layer, not
- * the tile.
+ * the tile. Only a printer that blinks gets the layer: the others scroll with
+ * one layer less.
  */
+@Composable
 fun Modifier.alertBorder(alerts: AlertView, fleet: FleetView, id: String, radius: Dp): Modifier =
-    graphicsLayer().drawWithContent {
+    if (!alerts.has(id)) this else graphicsLayer().drawWithContent {
         drawContent()
         if (alerts.has(id)) {
             val w = 5.dp.toPx()
