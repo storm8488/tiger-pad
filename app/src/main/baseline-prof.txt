@@ -1,0 +1,7 @@
+# Baseline profile, written by hand: there is no emulator or rooted device to
+# record one, and the app's own code is small enough to list whole.
+# Android 7 uses it at the first background compilation (the tablet on its
+# charger, idle): the screens are then compiled even before the JIT has seen
+# them. The libraries' own profiles (Compose...) are merged in by the build.
+HSPLcom/damou/tigertouch/**;->**(**)**
+Lcom/damou/tigertouch/**;
