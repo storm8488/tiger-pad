@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -109,11 +110,7 @@ private fun WallTile(
     // recomposes when the print starts or ends, not at every refresh.
     val cam = camHub != null && camUrl != null && rememberCameraShown(fleet, id)
     Box(modifier.alertBorder(alerts, fleet, id, 16.dp).clickable { onOpen(id) }) {
-        if (cam) {
-            val px = with(LocalDensity.current) { tileW.dp.toPx() }.toInt()
-            val feed = rememberFeed(camHub!!, camUrl!!, px)
-            CameraLayer(feed, Modifier.fillMaxSize(), radius = 16.dp, behind = Pal.bg, label = false)
-        }
+        // The ground, the name, the state, the bar and the times; the number too when no picture is shown.
         Spacer(
             Modifier
                 .fillMaxSize()
@@ -122,10 +119,36 @@ private fun WallTile(
                 .drawWithCache {
                     // The printer is read while drawing: a change redraws this tile, it recomposes nothing.
                     val p = fleet.get(id)
-                    val t = p?.let { TileText(it, paints, size.width, overCamera = cam) }
-                    onDrawBehind { t?.draw(this) }
+                    val t = p?.let { TileText(it, paints, size.width) }
+                    onDrawBehind { t?.draw(this, withBig = !cam) }
                 },
         )
+        if (cam) {
+            val d = LocalDensity.current
+            val px = with(d) { tileW.dp.toPx() }.toInt()
+            val feed = rememberFeed(camHub!!, camUrl!!, px)
+            // The picture, whole and untinted, between the words above and the times below, framed in the state's colour.
+            val frame by remember(fleet, id) { derivedStateOf { fleet.get(id)?.let { stateColors(it.state, it.online).second } } }
+            CameraLayer(
+                feed,
+                Modifier.fillMaxSize().padding(
+                    start = with(d) { paints.padX.toDp() }, end = with(d) { paints.padX.toDp() },
+                    top = with(d) { paints.topBand().toDp() }, bottom = with(d) { paints.bottomBand().toDp() },
+                ),
+                radius = 10.dp, behind = Color.Transparent, label = false, frame = frame,
+            )
+            // The number over the picture, with a shadow that keeps it readable on any picture.
+            Spacer(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithCache {
+                        val p = fleet.get(id)
+                        val t = p?.let { TileText(it, paints, size.width) }
+                        onDrawBehind { t?.drawBig(this, shadow = true) }
+                    },
+            )
+        }
     }
 }
 
@@ -143,6 +166,9 @@ private class WallPaints(private val d: Density, pctSp: Int, val compact: Boolea
     val spool = pen(14, bold)
     val big = pen(pctSp, bold)
     val sign = pen(pctSp / 2, medium)
+    /** The same, shadowed: over a camera picture. */
+    val bigShadow = pen(pctSp, bold).apply { setShadowLayer(with(d) { 6.dp.toPx() }, 0f, with(d) { 2.dp.toPx() }, 0xCC000000.toInt()) }
+    val signShadow = pen(pctSp / 2, medium).apply { setShadowLayer(with(d) { 4.dp.toPx() }, 0f, with(d) { 1.dp.toPx() }, 0xCC000000.toInt()) }
     val idle = pen(26, Typeface.DEFAULT)
     val time = pen(18, Typeface.DEFAULT)
     val end = pen(18, medium)
@@ -152,14 +178,17 @@ private class WallPaints(private val d: Density, pctSp: Int, val compact: Boolea
     val radius = with(d) { 16.dp.toPx() }
     val barH = with(d) { 8.dp.toPx() }
     val gap = with(d) { 6.dp.toPx() }
+
+    /** What the name and the state take at the top of a tile, in pixels. */
+    fun topBand(): Float = padY + name.lineH() + (if (compact) 0f else state.lineH()) + gap
+    /** What the bar and the times take at the bottom. */
+    fun bottomBand(): Float = padY + time.lineH() + gap + barH + gap
 }
 
 /** What a tile says, laid out for its width. */
-private class TileText(p: PrinterUi, private val k: WallPaints, w: Float, private val overCamera: Boolean) {
+private class TileText(p: PrinterUi, private val k: WallPaints, w: Float) {
     private val inner = w - 2 * k.padX
     private val colors = stateColors(p.state, p.online)
-    // Over a picture, the state's tint goes on as a scrim: the words stay readable, the picture shows through.
-    private val ground = if (overCamera) colors.first.copy(alpha = 0.62f) else colors.first
     // A printer that lapsed keeps its number: the print goes on, only the link blinked.
     private val showPct = (p.online || p.lapse) && (p.jobActive || p.state == PvState.DONE || p.state == PvState.ERROR)
     private val progress = p.progress / 100f
@@ -204,11 +233,34 @@ private class TileText(p: PrinterUi, private val k: WallPaints, w: Float, privat
         }
     }
 
-    fun draw(s: DrawScope) = with(s) {
+    /** Where the number sits: centred between the top band and the bar (or the bottom line). */
+    private fun DrawScope.bigTop(): Float {
+        val h = size.height
+        val bottomY = h - k.padY - left.h
+        val barY = bottomY - k.gap - k.barH
+        val y = k.padY + name.h + if (k.compact) 0f else state.h
+        val bigBottom = if (showPct) barY else bottomY
+        return y + (bigBottom - y - big.h) / 2f
+    }
+
+    /** The number and its sign alone, over a picture when [shadow]. */
+    fun drawBig(s: DrawScope, shadow: Boolean) = with(s) {
+        val c = drawContext.canvas.nativeCanvas
+        val top = bigTop()
+        val bp = if (shadow && showPct) k.bigShadow else big.pen
+        bp.color = Pal.text.toArgb()
+        c.drawText(big.text, k.padX, top + bp.base(), bp)
+        val sg = sign ?: return@with
+        val sp = if (shadow) k.signShadow else sg.pen
+        sp.color = Pal.text.toArgb()
+        c.drawText(sg.text, k.padX + big.w, top + bp.base(), sp)
+    }
+
+    fun draw(s: DrawScope, withBig: Boolean = true) = with(s) {
         val c = drawContext.canvas.nativeCanvas
         val w = size.width
         val h = size.height
-        drawRoundRect(ground, cornerRadius = CornerRadius(k.radius))
+        drawRoundRect(colors.first, cornerRadius = CornerRadius(k.radius))
         var y = k.padY
         name.draw(c, k.padX, y)
         if (k.compact) state.draw(c, w - k.padX - state.w, y + (name.h - state.h) / 2f)
@@ -228,11 +280,7 @@ private class TileText(p: PrinterUi, private val k: WallPaints, w: Float, privat
             drawRoundRect(Pal.danger, Offset(sx, sy), Size(sw, sh), CornerRadius(sh / 2))
             spool.draw(c, sx + k.gap, sy)
         }
-        val bigBottom = if (showPct) barY else bottomY
-        val bigTop = y + (bigBottom - y - big.h) / 2f
-        big.draw(c, k.padX, bigTop)
-        // The per cent sign, half size, on the same baseline.
-        sign?.draw(c, k.padX + big.w, bigTop + big.pen.base() - sign.pen.base())
+        if (withBig) drawBig(s, shadow = false)
         if (showPct) {
             val r = CornerRadius(k.barH / 2)
             val full = w - 2 * k.padX

@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
@@ -52,7 +53,7 @@ fun rememberFeed(hub: CameraHub, url: String, widthPx: Int): CameraHub.Feed {
  * rounded in [behind] (a clip would be another layer on this GPU).
  */
 @Composable
-fun CameraLayer(feed: CameraHub.Feed, modifier: Modifier, radius: Dp, behind: Color, label: Boolean) {
+fun CameraLayer(feed: CameraHub.Feed, modifier: Modifier, radius: Dp, behind: Color, label: Boolean, frame: Color? = null) {
     val d = LocalDensity.current
     val pen = remember(d) {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -75,10 +76,12 @@ fun CameraLayer(feed: CameraHub.Feed, modifier: Modifier, radius: Dp, behind: Co
                     val scale = minOf(size.width / img.width, size.height / img.height)
                     val dw = (img.width * scale).toInt()
                     val dh = (img.height * scale).toInt()
+                    val dx = ((size.width - dw) / 2).toInt()
+                    val dy = ((size.height - dh) / 2).toInt()
                     drawImage(
                         img,
                         srcSize = IntSize(img.width, img.height),
-                        dstOffset = IntOffset(((size.width - dw) / 2).toInt(), ((size.height - dh) / 2).toInt()),
+                        dstOffset = IntOffset(dx, dy),
                         dstSize = IntSize(dw, dh),
                         filterQuality = FilterQuality.Low,
                     )
@@ -88,6 +91,8 @@ fun CameraLayer(feed: CameraHub.Feed, modifier: Modifier, radius: Dp, behind: Co
                         addRoundRect(RoundRect(Rect(Offset.Zero, size), r))
                     }
                     drawPath(outer, behind)
+                    // A frame in the state's colour around the picture itself, not the node: the wall's tiles.
+                    if (frame != null) drawRoundRect(frame, Offset(dx.toFloat(), dy.toFloat()), Size(dw.toFloat(), dh.toFloat()), r, style = Stroke(3 * density))
                 }
                 if (!label) return@drawBehind
                 val pad = 10 * density

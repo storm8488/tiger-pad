@@ -73,7 +73,7 @@ to watch a whole fleet, so Tiger Pad gives it a second life.
   page shows only the prints at work, their end and the alerts. A touch or an
   event wakes it; the page moves by a few pixels every 3 minutes.
 - **Live cameras in the cards and on the wall**: every printer at work shows
-  its camera, above its card or under its wall tile, tinted by its state. The
+  its camera, above its card or inside its wall tile, framed in the colour of its state. The
   pace adapts on its own to how many cameras are on screen and to what the
   tablet can decode: about two pictures a second each with six on screen on
   the reference tablet, one a second with all fifteen on the wall, nothing for

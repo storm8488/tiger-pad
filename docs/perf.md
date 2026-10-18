@@ -254,10 +254,11 @@ more pictures on its own.
 
 ### The wall
 
-The same cameras on the wall: a printer at work shows its picture under its
-tile, the state's tint laid over it as a scrim (62 % opaque) so the words stay
-readable from across the room. The picture is a layer of its own under the
-tile's; the tile recomposes only when the print starts or ends.
+The same cameras on the wall: a printer at work shows its picture whole and
+untinted in the middle of its tile, between the name and the times, framed in
+the state's colour; the number is drawn over it with a shadow. The picture is
+a layer of its own between the tile's ground and its number; the tile
+recomposes only when the print starts or ends.
 
 Measured with 15 demo printers, 14 at work, all 14 cameras on one screen:
 
