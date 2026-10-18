@@ -21,6 +21,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.damou.tigertouch.cam.CardCams
 import com.damou.tigertouch.kiosk.Kiosk
 import com.damou.tigertouch.ui.DashboardScreen
 import com.damou.tigertouch.fleet.SortBy
@@ -93,6 +94,17 @@ class MainActivity : ComponentActivity() {
                 var settings by remember { mutableStateOf(false) }
                 var kiosk by remember { mutableStateOf(kioskInfo()) }
                 var showBattery by remember { mutableStateOf(uiPrefs.getBoolean("show_battery", true)) }
+                var cardCams by remember {
+                    mutableStateOf(runCatching { CardCams.valueOf(uiPrefs.getString("card_cams", "")!!) }.getOrDefault(CardCams.LIVE))
+                }
+                LaunchedEffect(cardCams) { app.camHub.mode = cardCams }
+                // The thumbnails wait at night, and go to the preview pace on a dimmed screen.
+                LaunchedEffect(Unit) {
+                    snapshotFlow { app.night.mode }.collect {
+                        app.camHub.pause("night", it == ScreenMode.NIGHT)
+                        app.camHub.dimmed = it == ScreenMode.DIM
+                    }
+                }
                 // The back key never leaves HOME: it closes the settings page, nothing else.
                 BackHandler { settings = false }
 
@@ -138,6 +150,11 @@ class MainActivity : ComponentActivity() {
                                     showBattery = on
                                     uiPrefs.edit().putBoolean("show_battery", on).apply()
                                 },
+                                cardCams = cardCams,
+                                onCardCams = { m ->
+                                    cardCams = m
+                                    uiPrefs.edit().putString("card_cams", m.name).apply()
+                                },
                                 demo = demo,
                                 onDemo = app::setDemo,
                                 onIncident = { com.damou.tigertouch.demo.Demo.incident() },
@@ -163,6 +180,8 @@ class MainActivity : ComponentActivity() {
                                 cameras = cameras,
                                 showBattery = showBattery,
                                 demo = demo.on,
+                                camHub = app.camHub,
+                                cardCams = cardCams,
                                 density = density,
                                 onDensity = { d ->
                                     density = d
@@ -193,6 +212,17 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         Kiosk.hideSystemBars(this)
+    }
+
+    // Not in front (Android settings open, screen off): no camera picture is fetched.
+    override fun onStart() {
+        super.onStart()
+        app.camHub.pause("background", false)
+    }
+
+    override fun onStop() {
+        app.camHub.pause("background", true)
+        super.onStop()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

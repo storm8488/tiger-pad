@@ -43,7 +43,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import com.damou.tigertouch.cam.CameraHub
+import com.damou.tigertouch.cam.CardCams
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.layout.onSizeChanged
@@ -148,6 +152,9 @@ fun DashboardScreen(
     showBattery: Boolean = true,
     /** Demo mode is on: a discreet banner says so. */
     demo: Boolean = false,
+    /** The live thumbnails of the cards, and whether they are on. */
+    camHub: CameraHub? = null,
+    cardCams: CardCams = CardCams.OFF,
 ) {
     var openId by remember { mutableStateOf<String?>(null) }
     var camId by remember { mutableStateOf<String?>(null) }
@@ -189,13 +196,14 @@ fun DashboardScreen(
                 if (area != IntSize.Zero) {
                     val w = with(dens) { area.width.toDp().value.toInt() }
                     val h = with(dens) { area.height.toDp().value.toInt() }
-                    val shown = if (density == Density.AUTO) autoDensity(ids.size, w, h) else density
+                    val camsOn = camHub != null && cardCams != CardCams.OFF && cameras.isNotEmpty()
+                    val shown = if (density == Density.AUTO) autoDensity(ids.size, w, h, camsOn) else density
                     // A touch on a printer that blinks acknowledges it; the next one opens it.
                     val onOpen: (String) -> Unit = { id -> if (alerts.has(id)) onAck(id) else openId = id }
                     when (shown) {
                         Density.WALL -> Wall(fleet, ids, w, h, alerts, onOpen)
                         Density.LIST -> FleetList(fleet, ids, alerts, onOpen, onControl)
-                        else -> Cards(fleet, ids, alerts, onOpen, onControl, cameras) { camId = it }
+                        else -> Cards(fleet, ids, alerts, onOpen, onControl, cameras, if (camsOn) camHub else null, cellWidth(w)) { camId = it }
                     }
                 }
             }
@@ -221,14 +229,25 @@ fun DashboardScreen(
     val cam = camId?.let { id -> cameras[id]?.let { url -> id to url } }
     if (cam != null) {
         val name = fleet.get(cam.first)?.name ?: ""
+        // The full-screen camera takes the whole budget: the thumbnails wait.
+        if (camHub != null) DisposableEffect(camHub) {
+            camHub.pause("full", true)
+            onDispose { camHub.pause("full", false) }
+        }
         CameraDialog(title = name, url = cam.second, onClose = { camId = null })
     }
 }
 
-/** Cards when they all fit on the screen, the wall otherwise. */
-private fun autoDensity(n: Int, w: Int, h: Int): Density {
-    val cols = ((w - 2 * 16 + GAP) / (CARD_MIN_W + GAP)).coerceAtLeast(1)
-    val rows = ((h - 2 * 16 + GAP) / (CARD_H + GAP)).coerceAtLeast(1)
+private fun columns(w: Int) = ((w - 2 * 16 + GAP) / (CARD_MIN_W + GAP)).coerceAtLeast(1)
+
+/** The width of one card, in dp, as the grid lays them out. */
+private fun cellWidth(w: Int): Int { val c = columns(w); return (w - 2 * 16 - GAP * (c - 1)) / c }
+
+/** Cards when they all fit on the screen, the wall otherwise. A camera above a card makes it taller. */
+private fun autoDensity(n: Int, w: Int, h: Int, cams: Boolean): Density {
+    val cols = columns(w)
+    val cardH = CARD_H + if (cams) cellWidth(w) * 9 / 16 + 6 else 0
+    val rows = ((h - 2 * 16 + GAP) / (cardH + GAP)).coerceAtLeast(1)
     return if (n <= cols * rows) Density.CARDS else Density.WALL
 }
 
@@ -315,12 +334,18 @@ fun DemoBadge(modifier: Modifier = Modifier) {
 @Composable
 private fun Cards(
     fleet: FleetView, ids: List<String>, alerts: AlertView, onOpen: (String) -> Unit, onControl: (String, PvControl) -> Unit,
-    cameras: Map<String, String>, onCamera: (String) -> Unit,
+    cameras: Map<String, String>, camHub: CameraHub?, cellW: Int, onCamera: (String) -> Unit,
 ) {
     val d = LocalDensity.current
     val pens = remember(d) { Pens(d) }
     val state = rememberLazyGridState()
     val shown = heldWhileScrolling(ids, state.isScrollInProgress)
+    // A finger scrolling: the thumbnails wait, the frames go to the scroll.
+    if (camHub != null) {
+        val scrolling = state.isScrollInProgress
+        LaunchedEffect(scrolling) { camHub.pause("scroll", scrolling) }
+        DisposableEffect(camHub) { onDispose { camHub.pause("scroll", false) } }
+    }
     LazyVerticalGrid(
         state = state,
         columns = GridCells.Adaptive(minSize = CARD_MIN_W.dp),
@@ -330,7 +355,15 @@ private fun Cards(
         modifier = Modifier.fillMaxSize(),
     ) {
         items(shown, key = { it }) { id ->
-            PrinterCard(fleet, id, pens, alerts, hasCamera = id in cameras, onOpen, onControl, onCamera)
+            val url = cameras[id]
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Printers at work only: an idle printer shows its card alone, its camera costs nothing.
+                if (camHub != null && url != null) {
+                    val working by remember(fleet, id) { derivedStateOf { fleet.get(id)?.jobActive == true } }
+                    if (working) CameraThumb(camHub, url, cellW) { onCamera(id) }
+                }
+                PrinterCard(fleet, id, pens, alerts, hasCamera = url != null, onOpen, onControl, onCamera)
+            }
         }
     }
 }

@@ -4,7 +4,9 @@ import android.app.Application
 import android.content.Context
 import android.net.wifi.WifiManager
 import android.util.Log
+import com.damou.tigertouch.cam.CameraHub
 import com.damou.tigertouch.cam.Cameras
+import com.damou.tigertouch.cam.DemoCams
 import com.damou.tigertouch.cloud.Cloud
 import com.damou.tigertouch.cloud.CloudErr
 import com.damou.tigertouch.cloud.PairStart
@@ -115,6 +117,9 @@ class TouchApp : Application() {
     val demo: StateFlow<DemoConfig> = _demo
     private var sessionJob: Job? = null
     private var pairJob: Job? = null
+
+    /** The live thumbnails of the cards. */
+    val camHub by lazy { CameraHub(Net.lanHttp, scope) }
 
     /** A stable id for this device in the account (Android hides the Wi-Fi MAC). */
     val deviceId: String by lazy {
@@ -229,9 +234,11 @@ class TouchApp : Application() {
     private fun applyDemo(c: DemoConfig) {
         links.setPrinters(emptyList())
         if (c.on) {
-            _cameras.value = emptyMap()
             camerasFor.clear()
-            links.setPrinters(Demo.printers(c))
+            val demoPrinters = Demo.printers(c)
+            // Every demo printer has a camera: made-up pictures, decoded for real.
+            _cameras.value = demoPrinters.associate { it.id to DemoCams.url(it.id) }
+            links.setPrinters(demoPrinters)
             links.setNetworkReady(true)
         } else {
             links.setPrinters(printers)

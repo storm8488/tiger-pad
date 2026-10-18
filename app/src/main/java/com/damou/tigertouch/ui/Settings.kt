@@ -40,6 +40,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.damou.tigertouch.BuildConfig
+import com.damou.tigertouch.cam.CardCams
 import com.damou.tigertouch.demo.Demo
 import com.damou.tigertouch.demo.DemoConfig
 import com.damou.tigertouch.events.AlertPrefs
@@ -66,6 +67,8 @@ fun SettingsScreen(
     onKiosk: (KioskAction) -> Unit,
     showBattery: Boolean,
     onShowBattery: (Boolean) -> Unit,
+    cardCams: CardCams,
+    onCardCams: (CardCams) -> Unit,
     demo: DemoConfig,
     onDemo: (DemoConfig) -> Unit,
     onIncident: () -> Unit,
@@ -123,6 +126,30 @@ fun SettingsScreen(
                         )
                     }
                     Switch(checked = showBattery, onCheckedChange = onShowBattery)
+                }
+            }
+            item {
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Pal.card).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(Tr.t("Cameras in the cards", "Caméras dans les cartes"), color = Pal.text, fontSize = 18.sp)
+                    Text(
+                        Tr.t("Printers at work only. Live adapts its pace to the cameras on screen and to this tablet.",
+                            "Seulement les imprimantes en impression. Direct adapte sa cadence au nombre de caméras à l'écran et à la tablette."),
+                        color = Pal.muted, fontSize = 14.sp,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for (m in CardCams.entries) {
+                            val on = m == cardCams
+                            val label = when (m) {
+                                CardCams.OFF -> Tr.t("Off", "Désactivé")
+                                CardCams.PREVIEW -> Tr.t("Preview", "Aperçu")
+                                CardCams.LIVE -> Tr.t("Live", "Direct")
+                            }
+                            if (on) Button(onClick = {}) { Text(label) } else OutlinedButton(onClick = { onCardCams(m) }) { Text(label) }
+                        }
+                    }
                 }
             }
 

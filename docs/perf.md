@@ -210,3 +210,44 @@ page was on: incident at 23:11:28.249, events seen at .885, full brightness at
   and takes 35 to 65 ms. Real end times barely move.
 - **Fresh install**: until the tablet's first night on its charger, the code
   is interpreted and the wall is at 10.7 %.
+
+## Cameras in the cards
+
+Settings → Display → *Cameras in the cards*: *Live* (the default), *Preview*,
+*Off*. A thumbnail sits above the card of each printer **at work** (printing or
+paused) that has a camera; an idle printer shows none.
+
+How the pace is chosen (`cam/CameraHub.kt`):
+
+- a thumbnail asks for one picture at a time (`?action=snapshot`), never the
+  continuous MJPEG stream, which would send every frame of every camera over
+  the tablet's Wi-Fi;
+- a moving average of what one decode costs on this tablet sets a budget of
+  500 ms of decoding per second (half of one core), shared between the
+  thumbnails open: only the cards on screen hold one. Each camera gets between
+  0.2 and 8 pictures per second;
+- everything waits while a finger scrolls, while a camera is full screen, at
+  night and when the app is not in front; a dimmed screen falls back to one
+  picture every 3 s;
+- pictures are decoded at the smallest power-of-two scale that keeps three
+  quarters of the thumbnail's width, in RGB_565, into three bitmaps used in turn.
+
+Measured with 15 demo printers, 14 at work, Cards view, six thumbnails on
+screen (demo cameras: 1280 × 720 JPEGs with grain, decoded for real):
+
+| | Value |
+|---|---|
+| One decode | 37 to 41 ms |
+| Pace per camera | 2.2 pictures/s (one every ~450 ms) |
+| App CPU, 40 s untouched | 46 % of one core |
+| Janky frames, 40 s untouched | 19 / 477 (4.0 %), 90th pct 14 ms |
+| Janky frames, scroll ×10 | 111 / 760 (14.6 %), 90th pct 21 ms (cards alone: 35.8 %) |
+| Memory | 67 MB PSS |
+
+With fewer cameras on screen each one gets more: from the measured decode
+cost, two cameras should get about 6 pictures per second each (computed, not
+measured). With the real K1 Max camera (one thumbnail, 110 KB snapshots), the pace
+was about one picture a second: the network, not the tablet, sets it there.
+Each snapshot took 0.4 to 2.9 s to arrive over the tablet's Wi-Fi (-64 dBm,
+5 GHz). The hub waits no longer than the pace asks, so a better signal gives
+more pictures on its own.
