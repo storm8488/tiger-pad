@@ -71,12 +71,15 @@ class CameraHub(base: OkHttpClient, private val scope: CoroutineScope) {
         const val PREVIEW_MS = 3000L
         /** At most this many pictures decoded at once (two cores). */
         private const val DECODERS = 2
-        private const val FAIL_RETRY_MS = 3000L
+        private const val FAIL_RETRY_MS = 2000L
+        /** Misses in a row before the thumbnail says the camera does not answer: one lost picture is the Wi-Fi's. */
+        private const val MISSES_BEFORE_FAILED = 3
     }
 
+    // A snapshot of 110 KB takes up to 3 s over a weak Wi-Fi: generous timeouts, or every other picture is lost.
     private val http = base.newBuilder()
-        .connectTimeout(4, TimeUnit.SECONDS)
-        .readTimeout(4, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
         .build()
     private val decoders = Semaphore(DECODERS)
 
@@ -143,6 +146,7 @@ class CameraHub(base: OkHttpClient, private val scope: CoroutineScope) {
         private val ring = arrayOfNulls<Bitmap>(3)
         private var next = 0
         private val times = ArrayDeque<Long>()
+        private var misses = 0
 
         internal suspend fun run() {
             while (currentCoroutineContext().isActive) {
@@ -155,10 +159,12 @@ class CameraHub(base: OkHttpClient, private val scope: CoroutineScope) {
                     null
                 }
                 if (bytes == null) {
-                    failed = true
+                    // The last picture stays on screen; the banner comes only when the camera keeps failing.
+                    if (++misses >= MISSES_BEFORE_FAILED) failed = true
                     delay(FAIL_RETRY_MS)
                     continue
                 }
+                misses = 0
                 val bmp = decoders.withPermit { decode(bytes) }
                 if (bmp == null) Log.w(TAG, "not decoded (${bytes.size} bytes)")
                 if (bmp != null) {

@@ -107,8 +107,7 @@ private fun WallTile(
 ) {
     // The camera, under the words, for a printer at work only: read as its own state, the tile
     // recomposes when the print starts or ends, not at every refresh.
-    val working by remember(fleet, id) { derivedStateOf { fleet.get(id)?.jobActive == true } }
-    val cam = camHub != null && camUrl != null && working
+    val cam = camHub != null && camUrl != null && rememberCameraShown(fleet, id)
     Box(modifier.alertBorder(alerts, fleet, id, 16.dp).clickable { onOpen(id) }) {
         if (cam) {
             val px = with(LocalDensity.current) { tileW.dp.toPx() }.toInt()
@@ -161,7 +160,8 @@ private class TileText(p: PrinterUi, private val k: WallPaints, w: Float, privat
     private val colors = stateColors(p.state, p.online)
     // Over a picture, the state's tint goes on as a scrim: the words stay readable, the picture shows through.
     private val ground = if (overCamera) colors.first.copy(alpha = 0.62f) else colors.first
-    private val showPct = p.online && (p.jobActive || p.state == PvState.DONE || p.state == PvState.ERROR)
+    // A printer that lapsed keeps its number: the print goes on, only the link blinked.
+    private val showPct = (p.online || p.lapse) && (p.jobActive || p.state == PvState.DONE || p.state == PvState.ERROR)
     private val progress = p.progress / 100f
     private val state = Line(stateWord(p), k.state, colors.second.toArgb(), inner)
     private val name = Line(p.name, k.name, Pal.text.toArgb(), if (k.compact) inner - state.w - k.gap else inner)

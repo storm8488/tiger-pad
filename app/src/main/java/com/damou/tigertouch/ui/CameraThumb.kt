@@ -8,7 +8,13 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
@@ -64,14 +70,16 @@ fun CameraLayer(feed: CameraHub.Feed, modifier: Modifier, radius: Dp, behind: Co
                 val img = feed.frame
                 if (img == null) drawRoundRect(Pal.card, cornerRadius = r)
                 else {
-                    val scale = maxOf(size.width / img.width, size.height / img.height)
-                    val sw = (size.width / scale).toInt()
-                    val sh = (size.height / scale).toInt()
+                    // The whole picture, fitted and centred: the print is what the camera is for, every edge of it.
+                    drawRoundRect(Pal.card, cornerRadius = r)
+                    val scale = minOf(size.width / img.width, size.height / img.height)
+                    val dw = (img.width * scale).toInt()
+                    val dh = (img.height * scale).toInt()
                     drawImage(
                         img,
-                        srcOffset = IntOffset((img.width - sw) / 2, (img.height - sh) / 2),
-                        srcSize = IntSize(sw, sh),
-                        dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+                        srcSize = IntSize(img.width, img.height),
+                        dstOffset = IntOffset(((size.width - dw) / 2).toInt(), ((size.height - dh) / 2).toInt()),
+                        dstSize = IntSize(dw, dh),
                         filterQuality = FilterQuality.Low,
                     )
                     val outer = Path().apply {
@@ -105,9 +113,30 @@ fun CameraThumb(hub: CameraHub, url: String, widthDp: Int, onOpen: () -> Unit) {
     val d = LocalDensity.current
     val px = with(d) { widthDp.dp.toPx() }.toInt()
     val feed = rememberFeed(hub, url, px)
+    // The camera's own proportions once its first picture is in (4:3 or 16:9): no band above or below.
+    val ratio = feed.frame?.let { it.width.toFloat() / it.height } ?: (16f / 9f)
     CameraLayer(
         feed,
-        Modifier.fillMaxWidth().aspectRatio(16f / 9f).clickable(onClick = onOpen),
+        Modifier.fillMaxWidth().aspectRatio(ratio).clickable(onClick = onOpen),
         radius = 18.dp, behind = Pal.bg, label = true,
     )
 }
+
+/**
+ * Whether this printer's camera is shown: while it prints or pauses, and for
+ * [HOLD_MS] after. A link that blinks (the Wi-Fi, a printer that restarts its
+ * socket) reports the printer idle or offline for a few seconds; without this
+ * hold the camera would vanish and come back with it.
+ */
+@Composable
+fun rememberCameraShown(fleet: FleetView, id: String): Boolean {
+    val working by remember(fleet, id) { derivedStateOf { fleet.get(id)?.jobActive == true } }
+    var shown by remember { mutableStateOf(working) }
+    LaunchedEffect(working) {
+        if (working) shown = true
+        else { delay(HOLD_MS); shown = false }
+    }
+    return shown
+}
+
+private const val HOLD_MS = 3 * 60_000L

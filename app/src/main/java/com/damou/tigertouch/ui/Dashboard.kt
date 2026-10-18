@@ -358,9 +358,8 @@ private fun Cards(
             val url = cameras[id]
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 // Printers at work only: an idle printer shows its card alone, its camera costs nothing.
-                if (camHub != null && url != null) {
-                    val working by remember(fleet, id) { derivedStateOf { fleet.get(id)?.jobActive == true } }
-                    if (working) CameraThumb(camHub, url, cellW) { onCamera(id) }
+                if (camHub != null && url != null && rememberCameraShown(fleet, id)) {
+                    CameraThumb(camHub, url, cellW) { onCamera(id) }
                 }
                 PrinterCard(fleet, id, pens, alerts, hasCamera = url != null, onOpen, onControl, onCamera)
             }

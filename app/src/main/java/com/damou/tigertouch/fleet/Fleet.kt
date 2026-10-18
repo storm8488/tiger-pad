@@ -66,6 +66,13 @@ data class PrinterUi(
     val noticeError: Boolean,
     /** What is left on the spool at work (the lowest when several are), -1 when unknown. */
     val spool: Int,
+    /**
+     * Offline for under [FleetMapper.LAPSE_MS], with the state it last reported: ordered and
+     * drawn as it was, only its state word says offline. A link that blinks (the Wi-Fi,
+     * a printer that restarts its socket) must not send the tile to the end of the wall
+     * and back, nor take its camera away.
+     */
+    val lapse: Boolean = false,
 ) {
     val jobActive: Boolean get() = state == PvState.PRINTING || state == PvState.PAUSED
 
@@ -73,7 +80,7 @@ data class PrinterUi(
 
     val attention: Attention
         get() = when {
-            !online -> Attention.OFFLINE
+            !online && !lapse -> Attention.OFFLINE
             state == PvState.ERROR -> Attention.ERROR
             state == PvState.PAUSED -> Attention.PAUSED
             state == PvState.DONE -> Attention.DONE
@@ -95,16 +102,35 @@ data class PrinterUi(
  * Used from one coroutine at a time.
  */
 class FleetMapper {
+    companion object {
+        /** How long a printer that stops answering keeps its last state and its place. */
+        const val LAPSE_MS = 2 * 60_000L
+    }
+
     private val shown = HashMap<String, Int>()
+    /** The last report of each printer that answered, and when. */
+    private val lastLive = HashMap<String, Pair<PrinterUi, Long>>()
 
     fun map(entries: List<PrinterEntry>, nowMs: Long = System.currentTimeMillis()): List<PrinterUi> {
         val ids = HashSet<String>()
         val out = entries.filter { it.enabled }.map { e ->
             ids += e.printer.id
-            one(e, nowMs)
+            held(one(e, nowMs), nowMs)
         }
         shown.keys.retainAll { it.substringBefore('|') in ids }
+        lastLive.keys.retainAll(ids)
         return out
+    }
+
+    /** [ui] as it is when it answers; while it blinks, what it last said, marked offline. */
+    private fun held(ui: PrinterUi, nowMs: Long): PrinterUi {
+        if (ui.online) {
+            lastLive[ui.id] = ui to nowMs
+            return ui
+        }
+        val (last, at) = lastLive[ui.id] ?: return ui
+        if (nowMs - at >= LAPSE_MS) return ui
+        return last.copy(online = false, connecting = ui.connecting, lapse = true, canControl = false, canLight = false)
     }
 
     private fun temp(id: String, what: String, raw: Float): Int {

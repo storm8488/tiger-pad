@@ -132,7 +132,9 @@ class Night(context: Context) {
                 else -> ScreenMode.DIM
             }
         }
-        if (nowMs - shiftAtMs >= SHIFT_EVERY_MS) {
+        // The walk against burn-in only once the screen is dimmed or on the night page: a page that
+        // moves while somebody watches it reads as a fault, and an awake screen is touched often enough.
+        if (mode != ScreenMode.AWAKE && nowMs - shiftAtMs >= SHIFT_EVERY_MS) {
             shiftAtMs = nowMs
             shiftStep = (shiftStep + 1) % SHIFTS.size
             shiftX = SHIFTS[shiftStep].first
