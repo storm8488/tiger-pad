@@ -72,12 +72,12 @@ to watch a whole fleet, so Tiger Pad gives it a second life.
   minutes without a touch; in the night hours (23 h – 7 h by default) a black
   page shows only the prints at work, their end and the alerts. A touch or an
   event wakes it; the page moves by a few pixels every 3 minutes.
-- **Live cameras in the cards**: every printer at work shows its camera
-  above its card. The pace adapts on its own to how many cameras are on screen
-  and to what the tablet can decode: about two pictures a second each with
-  six on screen on the reference tablet, more with fewer, nothing for a card
-  scrolled away.
-  A touch opens the camera full screen. *Live*, *Preview* or *Off* in
+- **Live cameras in the cards and on the wall**: every printer at work shows
+  its camera, above its card or under its wall tile, tinted by its state. The
+  pace adapts on its own to how many cameras are on screen and to what the
+  tablet can decode: about two pictures a second each with six on screen on
+  the reference tablet, one a second with all fifteen on the wall, nothing for
+  a card scrolled away. A touch opens the camera full screen. *Live*, *Preview* or *Off* in
   Settings > Display. Cameras are found on their own: Moonraker's webcams for
   Klipper, mjpg-streamer for Creality, the webcam settings of OctoPrint.
 - **Demo mode** (Settings > Demo): 1 to 20 made-up printers of every brand,
