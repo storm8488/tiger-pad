@@ -201,7 +201,7 @@ fun DashboardScreen(
                     // A touch on a printer that blinks acknowledges it; the next one opens it.
                     val onOpen: (String) -> Unit = { id -> if (alerts.has(id)) onAck(id) else openId = id }
                     when (shown) {
-                        Density.WALL -> Wall(fleet, ids, w, h, alerts, onOpen)
+                        Density.WALL -> Wall(fleet, ids, w, h, alerts, onOpen, cameras, if (camsOn) camHub else null)
                         Density.LIST -> FleetList(fleet, ids, alerts, onOpen, onControl)
                         else -> Cards(fleet, ids, alerts, onOpen, onControl, cameras, if (camsOn) camHub else null, cellWidth(w)) { camId = it }
                     }

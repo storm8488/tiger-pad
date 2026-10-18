@@ -251,3 +251,20 @@ was about one picture a second: the network, not the tablet, sets it there.
 Each snapshot took 0.4 to 2.9 s to arrive over the tablet's Wi-Fi (-64 dBm,
 5 GHz). The hub waits no longer than the pace asks, so a better signal gives
 more pictures on its own.
+
+### The wall
+
+The same cameras on the wall: a printer at work shows its picture under its
+tile, the state's tint laid over it as a scrim (62 % opaque) so the words stay
+readable from across the room. The picture is a layer of its own under the
+tile's; the tile recomposes only when the print starts or ends.
+
+Measured with 15 demo printers, 14 at work, all 14 cameras on one screen:
+
+| | Value |
+|---|---|
+| Pace per camera | about 0.9 pictures/s (14 feeds sharing the 500 ms budget, computed from the 40 ms decode) |
+| App CPU, 40 s untouched | 36 % of one core |
+| Janky frames, 40 s untouched | 11 / 531 (2.1 %), 90th pct 13 ms, 99th 21 ms |
+| Memory | 80 MB PSS (67 MB with six cameras in the cards) |
+

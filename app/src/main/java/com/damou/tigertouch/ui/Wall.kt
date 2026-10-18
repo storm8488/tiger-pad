@@ -5,6 +5,7 @@ import android.graphics.Typeface
 import android.text.TextPaint
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,8 +14,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import com.damou.tigertouch.cam.CameraHub
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
@@ -44,9 +48,14 @@ private const val GAP = 10
  * percentage in very large type, the time left and the time it ends.
  */
 @Composable
-fun Wall(fleet: FleetView, ids: List<String>, width: Int, height: Int, alerts: AlertView, onOpen: (String) -> Unit) {
+fun Wall(
+    fleet: FleetView, ids: List<String>, width: Int, height: Int, alerts: AlertView, onOpen: (String) -> Unit,
+    /** The cameras, by printer id, and the hub that feeds them; null when the tiles show none. */
+    cameras: Map<String, String> = emptyMap(), camHub: CameraHub? = null,
+) {
     val (cols, rows) = wallGrid(ids.size, width, height)
     val tileH = (height - 2 * PAD - (rows - 1) * GAP) / rows
+    val tileW = (width - 2 * PAD - (cols - 1) * GAP) / cols
     // At least 40 sp, as large as the tile allows.
     val pct = (tileH * 0.30f).toInt().coerceIn(40, 110)
     val compact = tileH < 180
@@ -59,7 +68,10 @@ fun Wall(fleet: FleetView, ids: List<String>, width: Int, height: Int, alerts: A
                     val i = r * cols + c
                     if (i < ids.size) {
                         val id = ids[i]
-                        key(id) { WallTile(fleet, id, paints, alerts, onOpen, Modifier.weight(1f).fillMaxHeight()) }
+                        key(id) {
+                            WallTile(fleet, id, paints, alerts, onOpen, Modifier.weight(1f).fillMaxHeight(),
+                                camHub = camHub, camUrl = cameras[id], tileW = tileW)
+                        }
                     } else {
                         Spacer(Modifier.weight(1f))
                     }
@@ -89,20 +101,33 @@ fun wallGrid(n: Int, w: Int, h: Int): Pair<Int, Int> {
  * each change. Here a change is one node and a few drawText calls.
  */
 @Composable
-private fun WallTile(fleet: FleetView, id: String, paints: WallPaints, alerts: AlertView, onOpen: (String) -> Unit, modifier: Modifier) {
-    Spacer(
-        modifier
-            .alertBorder(alerts, fleet, id, 16.dp)
-            // A texture of its own: the GPU redraws the tile that changed and copies the others.
-            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-            .clickable { onOpen(id) }
-            .drawWithCache {
-                // The printer is read while drawing: a change redraws this tile, it recomposes nothing.
-                val p = fleet.get(id)
-                val t = p?.let { TileText(it, paints, size.width) }
-                onDrawBehind { t?.draw(this) }
-            },
-    )
+private fun WallTile(
+    fleet: FleetView, id: String, paints: WallPaints, alerts: AlertView, onOpen: (String) -> Unit, modifier: Modifier,
+    camHub: CameraHub?, camUrl: String?, tileW: Int,
+) {
+    // The camera, under the words, for a printer at work only: read as its own state, the tile
+    // recomposes when the print starts or ends, not at every refresh.
+    val working by remember(fleet, id) { derivedStateOf { fleet.get(id)?.jobActive == true } }
+    val cam = camHub != null && camUrl != null && working
+    Box(modifier.alertBorder(alerts, fleet, id, 16.dp).clickable { onOpen(id) }) {
+        if (cam) {
+            val px = with(LocalDensity.current) { tileW.dp.toPx() }.toInt()
+            val feed = rememberFeed(camHub!!, camUrl!!, px)
+            CameraLayer(feed, Modifier.fillMaxSize(), radius = 16.dp, behind = Pal.bg, label = false)
+        }
+        Spacer(
+            Modifier
+                .fillMaxSize()
+                // A texture of its own: the GPU redraws the tile that changed and copies the others.
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithCache {
+                    // The printer is read while drawing: a change redraws this tile, it recomposes nothing.
+                    val p = fleet.get(id)
+                    val t = p?.let { TileText(it, paints, size.width, overCamera = cam) }
+                    onDrawBehind { t?.draw(this) }
+                },
+        )
+    }
 }
 
 /** The pens of the wall, made once for a tile size. */
@@ -131,9 +156,11 @@ private class WallPaints(private val d: Density, pctSp: Int, val compact: Boolea
 }
 
 /** What a tile says, laid out for its width. */
-private class TileText(p: PrinterUi, private val k: WallPaints, w: Float) {
+private class TileText(p: PrinterUi, private val k: WallPaints, w: Float, private val overCamera: Boolean) {
     private val inner = w - 2 * k.padX
     private val colors = stateColors(p.state, p.online)
+    // Over a picture, the state's tint goes on as a scrim: the words stay readable, the picture shows through.
+    private val ground = if (overCamera) colors.first.copy(alpha = 0.62f) else colors.first
     private val showPct = p.online && (p.jobActive || p.state == PvState.DONE || p.state == PvState.ERROR)
     private val progress = p.progress / 100f
     private val state = Line(stateWord(p), k.state, colors.second.toArgb(), inner)
@@ -181,7 +208,7 @@ private class TileText(p: PrinterUi, private val k: WallPaints, w: Float) {
         val c = drawContext.canvas.nativeCanvas
         val w = size.width
         val h = size.height
-        drawRoundRect(colors.first, cornerRadius = CornerRadius(k.radius))
+        drawRoundRect(ground, cornerRadius = CornerRadius(k.radius))
         var y = k.padY
         name.draw(c, k.padX, y)
         if (k.compact) state.draw(c, w - k.padX - state.w, y + (name.h - state.h) / 2f)
